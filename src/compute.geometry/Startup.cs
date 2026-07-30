@@ -85,6 +85,7 @@ namespace compute.geometry
                 ResthopperEndpointsModule.MapEndpoints(builder);
                 RhinoGetModule.MapEndpoints(builder);
                 RhinoPostModule.MapEndpoints(builder);
+                BranchExtractModule.MapEndpoints(builder);
             });
         }
 
