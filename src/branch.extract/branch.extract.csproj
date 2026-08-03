@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Headless Rhino/Branch extraction worker. Build configuration ported
+       verbatim from the proven reconnaissance harness. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>branch.extract</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RhinoSystemDir>$([MSBuild]::GetRegistryValueFromView('HKEY_LOCAL_MACHINE\SOFTWARE\McNeel\Rhinoceros\8.0\Install', 'Path', 'C:\Program Files\Rhino 8\System\', RegistryView.Registry64, RegistryView.Default))</RhinoSystemDir>
+    <BranchRhpPath>$([MSBuild]::GetRegistryValueFromView('HKEY_CURRENT_USER\Software\McNeel\Rhinoceros\8.0\Plug-Ins\bc174e4e-64cd-4b41-917d-3c54252b953e\PlugIn', 'FileName', '', RegistryView.Registry64, RegistryView.Default))</BranchRhpPath>
+    <BranchDir>$([System.IO.Path]::GetDirectoryName('$(BranchRhpPath)'))</BranchDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Rhino.Inside" Version="8.0.6-beta" />
+    <!-- Neutralize the older RhinoCommon that Rhino.Inside drags in, so the INSTALLED
+         RhinoCommon wins — BranchCommon was compiled against that contract. -->
+    <PackageReference Include="RhinoCommon" Version="8.0.23304.9001" ExcludeAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Private=false: never copied to bin, so exactly ONE br.om lives in the default
+         AssemblyLoadContext. Two copies => two sets of statics => ActiveDocument null. -->
+    <Reference Include="RhinoCommon">
+      <HintPath>$([System.IO.Path]::Combine('$(RhinoSystemDir)', 'RhinoCommon.dll'))</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="br.om">
+      <HintPath>$([System.IO.Path]::Combine('$(BranchDir)', 'br.om.dll'))</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BranchCommon">
+      <HintPath>$([System.IO.Path]::Combine('$(BranchDir)', 'BranchCommon.dll'))</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="ReportDiscoveredPaths" BeforeTargets="ResolveReferences">
+    <Message Importance="high" Text="[branch.extract] Rhino System dir : $(RhinoSystemDir)" />
+    <Message Importance="high" Text="[branch.extract] Branch plugin dir : $(BranchDir)" />
+    <Error Condition="'$(BranchDir)' == ''" Text="Branch plugin not found in the registry. Install the Branch plugin first." />
+  </Target>
+
+</Project>

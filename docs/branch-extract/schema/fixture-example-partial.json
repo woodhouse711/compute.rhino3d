@@ -1,0 +1,205 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-07-31T16:58:40.7443428Z",
+  "snapshot_date": "2026-07-31",
+  "job": "EXAMPLE-B",
+  "job_name": null,
+  "product_type": "DLT",
+  "product_subtype": null,
+  "source": {
+    "extractor": "branch.extract",
+    "extractor_version": "1.0.0",
+    "branch_plugin_version": "1.26169.2065",
+    "rhino_version": "8.32.26160.13001",
+    "model_file": "example-partial.3dm",
+    "model_revision": "2026-07-31T04:06:28.1816653Z",
+    "branch_project_guid": "00000000-0000-0000-0000-000000000000",
+    "weight_source": "branch_native_getweight",
+    "complexity_config_version": "cx-2026-07-30"
+  },
+  "extraction": {
+    "status": "partial",
+    "status_detail": "63 of 63 panels carry an unassigned material; native species, grade, and assigned density are unavailable.",
+    "types_recognised": {
+      "Fastener1d": 1077,
+      "TimberLinearBeam": 563,
+      "Dap1d": 488,
+      "ConnectionInstance": 405,
+      "Dap2d": 402,
+      "Part3d": 399,
+      "PanelSupport": 210,
+      "PlanarCut": 89,
+      "DLT": 63,
+      "AssemblyBase": 45,
+      "LineSupport": 21,
+      "StraightBillet": 20
+    },
+    "types_unrecognised": {},
+    "blocks": {
+      "definition_count": 67,
+      "objects_in_blocks": {
+        "Fastener1d": 1077,
+        "Dap1d": 488,
+        "Dap2d": 399,
+        "Part3d": 399,
+        "PlanarCut": 81,
+        "TimberLinearBeam": 63,
+        "AssemblyBase": 20,
+        "StraightBillet": 20
+      },
+      "overlap_with_top_level": {
+        "AssemblyBase": 0,
+        "Dap1d": 0,
+        "Dap2d": 0,
+        "Fastener1d": 0,
+        "Part3d": 0,
+        "PlanarCut": 0,
+        "StraightBillet": 0,
+        "TimberLinearBeam": 0
+      }
+    },
+    "dropped": null,
+    "excluded": {
+      "by_layer_policy": [],
+      "reference_types": 0
+    },
+    "elapsed_ms": 12848
+  },
+  "lod": {
+    "observed": 450,
+    "declared": null,
+    "geometry": 400,
+    "sequencing": 450,
+    "evidence": [
+      "daps_present",
+      "fasteners_present",
+      "connections_present",
+      "install_sequence_present",
+      "numbering_present",
+      "trucking_data_present"
+    ]
+  },
+  "panels": [
+    {
+      "mark": "P600-001",
+      "branch_id": "aaaaaaaa-0000-0000-0000-000000000000",
+      "instance_mark": "001",
+      "in_block": false,
+      "block_id": null,
+      "weight_kg": 20.49,
+      "volume_m3": 0.51,
+      "gross_area_sqft": 30.52,
+      "net_area_sqft": 30.52,
+      "net_area_sqft_native": 30.52,
+      "rough_area_sqft": 0,
+      "species": null,
+      "grade": null,
+      "material_name": null,
+      "material_id": null,
+      "density_assigned_kg_per_m3": null,
+      "density_implied_kg_per_m3": 40.1,
+      "density_discrepancy": true,
+      "length_mm": 3193.22,
+      "width_mm": 888,
+      "depth_mm": 180,
+      "lam": {
+        "profile": "Square",
+        "arrangement": "Uniform",
+        "thickness_mm": 37,
+        "height_mm": 180,
+        "notation": "18/6",
+        "count": 24
+      },
+      "logistics": {
+        "fabrication_package": null,
+        "truck": "DLT T3",
+        "bundle": "3",
+        "bundle_level": 11,
+        "install_sequence": 43
+      },
+      "counts": {
+        "daps_total": 1,
+        "daps_fastener": 0,
+        "daps_non_fastener": 1,
+        "fasteners": 4,
+        "panel_supports": 2,
+        "planar_cuts": 0
+      },
+      "complexity": {
+        "penetration_area_sqft": 0,
+        "penetration_count": 1,
+        "corner_count": 4,
+        "perimeter_m": 8.162,
+        "corners_per_m": 0.49,
+        "is_rectangular": true,
+        "has_penetrations": true
+      },
+      "subpanels": [
+        {
+          "type_letter": "A",
+          "net_area_sqft": 30.52,
+          "volume_m3": 0.51
+        }
+      ],
+      "field_errors": {
+        "species": "BranchMaterial.Name == 'Unassigned' (Species=Unset).",
+        "grade": "BranchMaterial.Name == 'Unassigned'.",
+        "material_name": "BranchMaterial.Name == 'Unassigned' \u2014 sentinel, not a material.",
+        "material_id": "BranchMaterial.Name == 'Unassigned' \u2014 no assigned material identifier.",
+        "density_assigned_kg_per_m3": "BranchMaterial.Density == 0 on an unassigned material.",
+        "weight_kg": "Value returned by GetWeight() but not traceable to the panel's unassigned material. Implied density is 40.1 kg/m3."
+      }
+    }
+  ],
+  "elements": [
+    {
+      "type": "ConnectionInstance",
+      "id": "bbbbbbbb-0000-0000-0000-000000000000",
+      "host_id": "aaaaaaaa-0000-0000-0000-000000000000",
+      "in_block": false,
+      "block_id": null,
+      "is_fastener_dap": null,
+      "weight_kg": 0,
+      "field_errors": {}
+    },
+    {
+      "type": "ConnectionInstance",
+      "id": "bbbbbbbb-0000-0000-0000-000000000001",
+      "host_id": "aaaaaaaa-0000-0000-0000-000000000000",
+      "in_block": false,
+      "block_id": null,
+      "is_fastener_dap": null,
+      "weight_kg": 0,
+      "field_errors": {}
+    }
+  ],
+  "summary": {
+    "panel_count": 63,
+    "total_net_area_sqft": 7108.09,
+    "total_volume_m3": 118.854,
+    "total_weight_kg": 4963.03,
+    "panels_with_errors": 63,
+    "material_breakdown": [
+      {
+        "species": null,
+        "layup": null,
+        "panel_count": 63,
+        "net_area_sqft": 7108.09,
+        "weight_kg": 4963.03
+      }
+    ],
+    "logistics": {
+      "truck_count": 3,
+      "bundle_count": 7,
+      "fabrication_package_count": 0,
+      "install_sequence_span": 63,
+      "install_sequence_coverage_pct": 100
+    }
+  },
+  "units": {
+    "area": "sqft",
+    "volume": "m3",
+    "weight": "kg",
+    "length": "mm"
+  }
+}

@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://structurecraft.com/schema/branch-extract-1.0.schema.json",
+  "title": "Branch DLT extraction record, schema 1.0",
+  "description": "One record per model per extraction. Every value states its origin. A null is only valid alongside a reason in field_errors. Nothing in this document is reconstructed arithmetically from another Branch value except where a property name says so explicitly (density_implied_kg_per_m3, penetration_area_sqft).",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "snapshot_date", "job", "source", "extraction", "units"],
+  "additionalProperties": false,
+
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "generated_at":   { "type": "string", "format": "date-time" },
+    "snapshot_date":  { "type": "string", "format": "date" },
+    "job":            { "type": "string", "description": "Project code, as used by the caller" },
+    "job_name":       { "type": ["string", "null"] },
+    "product_type":   { "type": "string", "enum": ["DLT"] },
+    "product_subtype":{ "type": ["string", "null"] },
+
+    "source": {
+      "type": "object",
+      "description": "Provenance. Enough to reproduce the run and to re-derive values later without re-extracting.",
+      "required": ["extractor", "model_file", "weight_source"],
+      "additionalProperties": false,
+      "properties": {
+        "extractor":              { "type": "string", "description": "branch.extract" },
+        "extractor_version":      { "type": ["string", "null"] },
+        "branch_plugin_version":  { "type": ["string", "null"], "description": "e.g. 1.26169.2065" },
+        "rhino_version":          { "type": ["string", "null"], "description": "Rhino.RhinoApp.Version" },
+        "model_file":             { "type": "string" },
+        "model_revision":         { "type": ["string", "null"], "description": "file mtime, ISO-8601" },
+        "branch_project_guid":    { "type": ["string", "null"], "description": "BranchDoc.ActiveDocument.UniqueId — which SC resources folder Branch itself selected. Models can carry several; this records the one actually used." },
+        "weight_source": {
+          "type": "string",
+          "enum": ["branch_native_getweight"],
+          "description": "How weight_kg was obtained. An enum, not a boolean, so the source can be replaced later without a schema break. Never 'reconstructed'."
+        },
+        "complexity_config_version": { "type": ["string", "null"], "description": "Version of the threshold table behind the boolean descriptors. Stamped so any score is reproducible and re-tunable without re-extraction." }
+      }
+    },
+
+    "extraction": {
+      "type": "object",
+      "description": "Outcome of the walk. status is authoritative; a caller must not infer success from the presence of panels.",
+      "required": ["status", "types_recognised"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["ok", "no_branch_content", "needs_upgrade", "timeout",
+                   "plugin_load_failed", "partial", "partial_invalid", "partial_truncated", "crashed"],
+          "description": "'ok' requires a complete walk with no per-field errors. Zero panels is 'no_branch_content', never 'ok'."
+        },
+        "status_detail":     { "type": ["string", "null"] },
+        "types_recognised":  { "type": "object", "additionalProperties": { "type": "integer" },
+                               "description": "Post-dedup distinct counts, keyed by OM type name." },
+        "types_unrecognised":{ "type": "object", "additionalProperties": { "type": "integer" },
+                               "description": "Types seen but not modelled by this schema version. Never silently dropped — twelve types were found where six were expected." },
+        "blocks": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "definition_count":  { "type": "integer" },
+            "objects_in_blocks": { "type": "object", "additionalProperties": { "type": "integer" } },
+            "overlap_with_top_level": { "type": "object", "additionalProperties": { "type": "integer" },
+              "description": "Objects present in BOTH collections, per type, before dedup. Measured 0 on every type of every model tested, but Branch permits it, so it is measured rather than assumed." }
+          }
+        },
+        "dropped": {
+          "type": ["object", "null"],
+          "description": "Home for partial_truncated. A traversal exception must record where it happened and how many objects were lost.",
+          "additionalProperties": false,
+          "properties": {
+            "where":     { "type": "string" },
+            "count":     { "type": "integer" },
+            "exception": { "type": ["string", "null"] }
+          }
+        },
+        "excluded": {
+          "type": ["object", "null"],
+          "description": "What the layer/type policy removed. Reported, never silent.",
+          "additionalProperties": false,
+          "properties": {
+            "by_layer_policy": { "type": "array", "items": { "type": "string" } },
+            "reference_types": { "type": "integer", "description": "Dap1DReference / Dap2DReference / LineSupportReference instances excluded by type." }
+          }
+        },
+        "elapsed_ms": { "type": ["integer", "null"] }
+      }
+    },
+
+    "lod": {
+      "type": ["object", "null"],
+      "description": "Derived from the census against the StructureCraft LOD ladder. 'observed' is a floor, not a claim of completeness.",
+      "additionalProperties": false,
+      "properties": {
+        "observed":   { "type": ["integer", "null"], "enum": [200, 250, 300, 350, 400, 450, null] },
+        "declared":   { "type": ["integer", "null"], "description": "Manual until Branch carries LOD as a model state." },
+        "geometry":   { "type": ["integer", "null"] },
+        "sequencing": { "type": ["integer", "null"], "description": "Install Sequence is a 350 marker; Numbering plus Truck/Bundle are 450 markers. Conflating them over-reports." },
+        "evidence":   { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "panels":   { "type": "array", "items": { "$ref": "#/$defs/panel" } },
+    "elements": { "type": "array", "items": { "$ref": "#/$defs/element" },
+                  "description": "RESERVED. Populated and validated, but no downstream consumer in this phase." },
+
+    "summary":  { "$ref": "#/$defs/summary" },
+
+    "units": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["area", "volume", "weight", "length"],
+      "properties": {
+        "area":   { "const": "sqft" },
+        "volume": { "const": "m3" },
+        "weight": { "const": "kg" },
+        "length": { "const": "mm" }
+      }
+    }
+  },
+
+  "$defs": {
+
+    "field_errors": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "field name -> why it is null or untrustworthy, e.g. 'GetWeight() returned NaN'. A null value with no entry here is a schema violation, not a value."
+    },
+
+    "panel": {
+      "type": "object",
+      "description": "One DLT. Source attribution per field is in each description.",
+      "required": ["mark", "branch_id"],
+      "additionalProperties": false,
+      "properties": {
+        "mark":          { "type": ["string", "null"], "description": "DLT.Mark — contract: TypePrefix + TypeSuffix + '-' + InstanceMark, e.g. P110-01. Downstream half_label() depends on the suffix." },
+        "branch_id":     { "type": "string", "description": "DLT.UniqueId" },
+        "instance_mark": { "type": ["string", "null"], "description": "DLT.InstanceMark" },
+        "in_block":      { "type": "boolean" },
+        "block_id":      { "type": ["string", "null"] },
+
+        "weight_kg":     { "type": ["number", "null"], "description": "DLT.GetWeight(). NaN is an error, never a zero." },
+        "volume_m3":     { "type": ["number", "null"], "description": "DLT.Volume (native)." },
+
+        "gross_area_sqft": { "type": ["number", "null"], "description": "DLT.GrossArea" },
+        "net_area_sqft":   { "type": ["number", "null"], "description": "Sum of subpanel NetArea, raw then rounded once — deliberately NOT DLT.NetArea, so the bit-identical regression invariant against schema 0.3 survives. DLT.NetArea is emitted separately as a cross-check." },
+        "net_area_sqft_native": { "type": ["number", "null"], "description": "DLT.NetArea. Cross-check only. If it disagrees with net_area_sqft beyond rounding, that is a finding to investigate, not a number to choose between." },
+        "rough_area_sqft": { "type": ["number", "null"], "description": "DLT.RoughArea" },
+
+        "species":  { "type": ["string", "null"], "description": "BranchMaterial.Species (SpeciesTypes enum) mapped through the versioned display table. Null when Material.Name == 'Unassigned'." },
+        "grade":    { "type": ["string", "null"], "description": "BranchMaterial.Grade" },
+        "material_name": { "type": ["string", "null"], "description": "BranchMaterial.Name. Never the literal 'Unassigned' — that becomes null plus a field_errors entry." },
+        "material_id":   { "type": ["string", "null"], "description": "BranchMaterial.UniqueId" },
+
+        "density_assigned_kg_per_m3": { "type": ["number", "null"], "description": "BranchMaterial.Density — what the panel's material says." },
+        "density_implied_kg_per_m3":  { "type": ["number", "null"], "description": "weight_kg / volume_m3 — what GetWeight() behaves as if it used. DERIVED, and labelled as such." },
+        "density_discrepancy":        { "type": ["boolean", "null"], "description": "True when assigned and implied disagree beyond rounding. Branch-internal inconsistency observed on real models: one assigns SPF 450 but implies 519.1 kg/m3; another assigns 0 yet still returns a non-zero weight. Flagged, never reconciled." },
+
+        "length_mm": { "type": ["number", "null"] },
+        "width_mm":  { "type": ["number", "null"] },
+        "depth_mm":  { "type": ["number", "null"], "description": "DLT.DepthOfSubpanel" },
+
+        "lam": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "profile":       { "type": ["string", "null"] },
+            "arrangement":   { "type": ["string", "null"] },
+            "thickness_mm":  { "type": ["number", "null"] },
+            "height_mm":     { "type": ["number", "null"] },
+            "notation":      { "type": ["string", "null"], "description": "e.g. 18/14+18/15" },
+            "count":         { "type": ["integer", "null"], "description": "DLT.GetLamsCount()" }
+          }
+        },
+
+        "logistics": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "fabrication_package": { "type": ["string", "null"] },
+            "truck":               { "type": ["string", "null"], "description": "LOD 450 marker" },
+            "bundle":              { "type": ["string", "null"], "description": "LOD 450 marker" },
+            "bundle_level":        { "type": ["integer", "null"] },
+            "install_sequence":    { "type": ["integer", "null"], "description": "LOD 350 marker — NOT 450" }
+          }
+        },
+
+        "counts": {
+          "type": ["object", "null"],
+          "description": "From forward navigation on the panel, not a reverse HostId join.",
+          "additionalProperties": false,
+          "properties": {
+            "daps_total":        { "type": ["integer", "null"], "description": "CollectDaps(true)" },
+            "daps_fastener":     { "type": ["integer", "null"], "description": "CollectFastenerDaps() — connection-driven machining" },
+            "daps_non_fastener": { "type": ["integer", "null"], "description": "CollectNonFastenerDaps() — penetration / notching machining" },
+            "fasteners":         { "type": ["integer", "null"], "description": "CollectFasteners()" },
+            "panel_supports":    { "type": ["integer", "null"], "description": "DLT.PanelSupports" },
+            "planar_cuts":       { "type": ["integer", "null"], "description": "PlanarCut derives from Dap2dBase and is a penetration; counting only Dap2d undercounts cutouts." }
+          }
+        },
+
+        "complexity": {
+          "type": ["object", "null"],
+          "description": "Tier 2: derived once, in C#, from native atomics only. If an input atomic is null the descriptor is null — never defaulted. Contains no time, duration, or labour estimate of any kind, by user directive.",
+          "additionalProperties": false,
+          "properties": {
+            "penetration_area_sqft": { "type": ["number", "null"], "description": "GrossArea - NetArea, computed from the RAW native values before rounding. Do NOT recompute it by subtracting the published gross_area_sqft and net_area_sqft columns: those are rounded to 2dp and 1dp respectively, so the difference can come out spuriously non-zero or even negative. Verified meaningful on a reference model: 66 of 138 panels carried a non-zero value, max 20.85 sqft." },
+            "penetration_count":     { "type": ["integer", "null"], "description": "daps_non_fastener + planar_cuts. ⚠ This is NOT a count of holes, and it can be non-zero while penetration_area_sqft is 0 — a dap is a surface recess, not a through-cutout, so it adds machining without removing net area. Observed on a reference model: 22 of 63 panels had a non-zero count with zero area. Read the two fields as machining-operation count and cutout area, never as two views of the same thing." },
+            "corner_count":          { "type": ["integer", "null"], "description": "From DLT.Boundary. Populated on 100% of DLTs across all models tested." },
+            "perimeter_m":           { "type": ["number", "null"], "description": "From DLT.Boundary" },
+            "corners_per_m":         { "type": ["number", "null"] },
+            "is_rectangular":        { "type": ["boolean", "null"] },
+            "has_penetrations":      { "type": ["boolean", "null"] }
+          }
+        },
+
+        "subpanels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type_letter":   { "type": ["string", "null"] },
+              "net_area_sqft": { "type": ["number", "null"] },
+              "volume_m3":     { "type": ["number", "null"] }
+            }
+          }
+        },
+
+        "field_errors": { "$ref": "#/$defs/field_errors" }
+      }
+    },
+
+    "element": {
+      "type": "object",
+      "description": "Any non-DLT Branch object, flat with a parent reference. Twelve types observed: DLT, Dap1d, Dap2d, Fastener1d, LineSupport, PanelSupport, Part3d, AssemblyBase, ConnectionInstance, TimberLinearBeam, PlanarCut, StraightBillet. The list is open — unrecognised types go to extraction.types_unrecognised, never dropped.",
+      "required": ["type", "id"],
+      "additionalProperties": true,
+      "properties": {
+        "type":             { "type": "string", "description": "OM type name" },
+        "id":               { "type": "string", "description": "UniqueId — present on all twelve types; the dedup key across top-level and block collections." },
+        "host_id":          { "type": ["string", "null"], "description": "HostId — present on all twelve types." },
+        "in_block":         { "type": "boolean", "description": "Four types were observed existing ONLY inside block definitions." },
+        "block_id":         { "type": ["string", "null"] },
+        "is_fastener_dap":  { "type": ["boolean", "null"], "description": "Dap types only." },
+        "weight_kg":        { "type": ["number", "null"], "description": "Seven of twelve types implement IWeighable; null on the other five, which are subtractive or positional." },
+        "field_errors":     { "$ref": "#/$defs/field_errors" }
+      }
+    },
+
+    "summary": {
+      "type": "object",
+      "description": "A pure rollup of panels[] — the document stays self-consistent by construction.",
+      "additionalProperties": false,
+      "properties": {
+        "panel_count":          { "type": "integer" },
+        "total_net_area_sqft":  { "type": ["number", "null"] },
+        "total_volume_m3":      { "type": ["number", "null"] },
+        "total_weight_kg":      { "type": ["number", "null"] },
+        "panels_with_errors":   { "type": "integer", "description": "Count of panels carrying any field_errors entry. Non-zero forbids status 'ok'." },
+        "material_breakdown": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "species":       { "type": ["string", "null"] },
+              "layup":         { "type": ["string", "null"] },
+              "panel_count":   { "type": "integer" },
+              "net_area_sqft": { "type": ["number", "null"] },
+              "weight_kg":     { "type": ["number", "null"] }
+            }
+          }
+        },
+        "logistics": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "truck_count":                  { "type": "integer" },
+            "bundle_count":                 { "type": "integer" },
+            "fabrication_package_count":    { "type": "integer" },
+            "install_sequence_span":        { "type": ["integer", "null"] },
+            "install_sequence_coverage_pct":{ "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}

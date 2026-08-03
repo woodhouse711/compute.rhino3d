@@ -32,6 +32,7 @@ namespace compute.geometry
 
         public void Configure(IApplicationBuilder app)
         {
+            BranchExtractModule.Initialize();
             RhinoCoreStartup();
 
             // Global exception handler. Sits at the very top of the pipeline so it catches

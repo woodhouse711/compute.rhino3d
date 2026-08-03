@@ -1,0 +1,177 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-07-30T21:15:00-07:00",
+  "snapshot_date": "2026-07-30",
+  "job": "EXAMPLE-A",
+  "job_name": null,
+  "product_type": "DLT",
+  "product_subtype": null,
+  "source": {
+    "extractor": "branch.extract",
+    "extractor_version": "1.0.0",
+    "branch_plugin_version": "1.26169.2065",
+    "rhino_version": "8.32.26160.13001",
+    "model_file": "example-clean.3dm",
+    "model_revision": "2026-05-27T00:00:00-07:00",
+    "branch_project_guid": "00000000-0000-0000-0000-000000000000",
+    "weight_source": "branch_native_getweight",
+    "complexity_config_version": "cx-2026-07-30"
+  },
+  "extraction": {
+    "status": "ok",
+    "status_detail": null,
+    "types_recognised": {
+      "Dap2d": 506,
+      "PanelSupport": 359,
+      "Dap1d": 258,
+      "DLT": 138,
+      "LineSupport": 93,
+      "Fastener1d": 48
+    },
+    "types_unrecognised": {},
+    "blocks": {
+      "definition_count": 0,
+      "objects_in_blocks": {},
+      "overlap_with_top_level": {}
+    },
+    "dropped": null,
+    "excluded": {
+      "by_layer_policy": [],
+      "reference_types": 0
+    },
+    "elapsed_ms": 8900
+  },
+  "lod": {
+    "observed": 400,
+    "declared": null,
+    "geometry": 400,
+    "sequencing": 350,
+    "evidence": [
+      "daps_present",
+      "fasteners_present",
+      "install_sequence_present",
+      "no_trucking_data"
+    ]
+  },
+  "panels": [
+    {
+      "mark": "P110-01",
+      "branch_id": "aaaaaaaa-0000-0000-0000-000000000000",
+      "instance_mark": "01",
+      "in_block": false,
+      "block_id": null,
+      "weight_kg": 1807.46,
+      "volume_m3": 3.482,
+      "gross_area_sqft": 268.4,
+      "net_area_sqft": 261.7,
+      "net_area_sqft_native": 261.7,
+      "rough_area_sqft": 274.1,
+      "species": "SPF",
+      "grade": "No.2 or btr.",
+      "material_name": "DLTLumber-SPF-No.2 or btr.",
+      "material_id": "11111111-1111-1111-1111-111111111111",
+      "density_assigned_kg_per_m3": 450.0,
+      "density_implied_kg_per_m3": 519.1,
+      "density_discrepancy": true,
+      "length_mm": 11430.0,
+      "width_mm": 1219.0,
+      "depth_mm": 241.0,
+      "lam": {
+        "profile": "Flat",
+        "arrangement": "Standard",
+        "thickness_mm": 38.0,
+        "height_mm": 241.0,
+        "notation": "18/14+18/15",
+        "count": 65
+      },
+      "logistics": {
+        "fabrication_package": "FP-01",
+        "truck": null,
+        "bundle": null,
+        "bundle_level": null,
+        "install_sequence": 12
+      },
+      "counts": {
+        "daps_total": 12,
+        "daps_fastener": 8,
+        "daps_non_fastener": 4,
+        "fasteners": 8,
+        "panel_supports": 3,
+        "planar_cuts": 0
+      },
+      "complexity": {
+        "penetration_area_sqft": 6.7,
+        "penetration_count": 4,
+        "corner_count": 4,
+        "perimeter_m": 25.3,
+        "corners_per_m": 0.158,
+        "is_rectangular": true,
+        "has_penetrations": true
+      },
+      "subpanels": [
+        {
+          "type_letter": "A",
+          "net_area_sqft": 130.9,
+          "volume_m3": 1.741
+        },
+        {
+          "type_letter": "B",
+          "net_area_sqft": 130.8,
+          "volume_m3": 1.741
+        }
+      ],
+      "field_errors": {}
+    }
+  ],
+  "elements": [
+    {
+      "type": "Dap2d",
+      "id": "bbbbbbbb-0000-0000-0000-000000000000",
+      "host_id": "aaaaaaaa-0000-0000-0000-000000000000",
+      "in_block": false,
+      "block_id": null,
+      "is_fastener_dap": true,
+      "weight_kg": null,
+      "field_errors": {}
+    },
+    {
+      "type": "Fastener1d",
+      "id": "bbbbbbbb-0000-0000-0000-000000000001",
+      "host_id": "aaaaaaaa-0000-0000-0000-000000000000",
+      "in_block": false,
+      "block_id": null,
+      "is_fastener_dap": null,
+      "weight_kg": 0.42,
+      "field_errors": {}
+    }
+  ],
+  "summary": {
+    "panel_count": 138,
+    "total_net_area_sqft": 32744.1,
+    "total_volume_m3": 413.43,
+    "total_weight_kg": 214607.79,
+    "panels_with_errors": 0,
+    "material_breakdown": [
+      {
+        "species": "SPF",
+        "layup": null,
+        "panel_count": 138,
+        "net_area_sqft": 32744.1,
+        "weight_kg": 214607.79
+      }
+    ],
+    "logistics": {
+      "truck_count": 0,
+      "bundle_count": 0,
+      "fabrication_package_count": 1,
+      "install_sequence_span": 138,
+      "install_sequence_coverage_pct": 100
+    }
+  },
+  "units": {
+    "area": "sqft",
+    "volume": "m3",
+    "weight": "kg",
+    "length": "mm"
+  }
+}
