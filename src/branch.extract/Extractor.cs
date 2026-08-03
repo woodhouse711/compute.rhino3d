@@ -1385,9 +1385,14 @@ internal static class Extractor
                 "complexity.penetration_count",
                 "counts.daps_non_fastener or counts.planar_cuts is unavailable.");
         }
+        // Derived from AREA REMOVED, not from the dap count. A dap is a surface recess, so
+        // counting daps made this true on every panel of every model - a flag that never
+        // varies carries no information. Gross minus Net is material actually gone, which on
+        // a reference model is non-zero for 66 of 138 panels.
+        const double AreaEpsilonSqft = 0.01;
         panel.Complexity.HasPenetrations =
-            panel.Complexity.PenetrationCount.HasValue
-                ? panel.Complexity.PenetrationCount.Value > 0
+            panel.Complexity.PenetrationAreaSqft.HasValue
+                ? panel.Complexity.PenetrationAreaSqft.Value > AreaEpsilonSqft
                 : null;
         if (!panel.Complexity.HasPenetrations.HasValue)
         {
@@ -1395,7 +1400,7 @@ internal static class Extractor
                 panel,
                 issues,
                 "complexity.has_penetrations",
-                "complexity.penetration_count is unavailable.");
+                "complexity.penetration_area_sqft is unavailable.");
         }
 
         Curve boundary;
@@ -1409,23 +1414,25 @@ internal static class Extractor
         }
         catch (Exception ex)
         {
+            // Only the perimeter depends on Boundary now; corner_count and is_rectangular
+            // come from NetAreaGeometry below. Do NOT return here - a real model lost
+            // Boundary.GetLength() to a NotLicensedException on all 105 panels while its
+            // solid geometry was perfectly readable, and bailing out threw away corner data
+            // that was still obtainable.
             string reason = $"DLT.Boundary {Describe(ex)}.";
-            foreach (string field in new[]
-                     {
-                         "complexity.corner_count",
-                         "complexity.perimeter_m",
-                         "complexity.corners_per_m",
-                         "complexity.is_rectangular"
-                     })
-            {
-                AddInvalid(panel, issues, field, reason);
-            }
-            return;
+            AddInvalid(panel, issues, "complexity.perimeter_m", reason);
+            AddInvalid(panel, issues, "complexity.corners_per_m", reason);
+            boundary = null;
         }
 
         double? perimeterRaw = null;
         try
         {
+            // Null only when the catch above already recorded why. Skip rather than let it
+            // resurface as a misleading NullReferenceException.
+            if (boundary == null)
+                throw new SkipFieldException();
+
             double length = boundary.GetLength() * units.LengthToMetres;
             if (!double.IsFinite(length) || length <= 0.0)
             {
@@ -1441,6 +1448,10 @@ internal static class Extractor
                 panel.Complexity.PerimeterM = Round(length, 3);
             }
         }
+        catch (SkipFieldException)
+        {
+            // reason already recorded where boundary was nulled
+        }
         catch (Exception ex)
         {
             AddInvalid(
@@ -1450,17 +1461,54 @@ internal static class Extractor
                 $"DLT.Boundary.GetLength() threw {Describe(ex)}.");
         }
 
+        // Corner count comes from DLT.NetAreaGeometry, NOT from DLT.Boundary.
+        //
+        // Boundary is the panel's NOMINAL RECTANGLE - always 4 corners, on every panel of
+        // every model tested. Its LENGTH is still the true perimeter (a rectilinear notch
+        // replaces two removed edges with two of equal length, so perimeter is preserved),
+        // which is why perimeter_m above is correct while corner_count from the same curve
+        // was not.
+        //
+        // NetAreaGeometry is a closed solid: a plain box has 6 faces and each notch adds 2.
+        // Its largest planar face is the panel's net plan view, and that face's area equals
+        // DLT.NetArea exactly. Measured on a reference model, this yields a real distribution
+        // of 4/5/6/8 corners with 67 of 138 panels non-rectangular, where Boundary reported 4
+        // for all 138.
         try
         {
+            Brep net = dlt.NetAreaGeometry;
+            if (net == null)
+                throw new InvalidOperationException("returned null");
+
+            BrepFace plan = null;
+            double planArea = 0.0;
+            foreach (BrepFace face in net.Faces)
+            {
+                AreaMassProperties fa = AreaMassProperties.Compute(face);
+                if (fa == null)
+                    continue;
+                if (fa.Area > planArea)
+                {
+                    planArea = fa.Area;
+                    plan = face;
+                }
+            }
+
+            BrepLoop outer = plan?.Loops
+                ?.FirstOrDefault(loop => loop.LoopType == BrepLoopType.Outer);
+            Curve outline = outer?.To3dCurve();
+            if (outline == null)
+                throw new InvalidOperationException("has no outer loop on its largest planar face");
+
             BoundaryShape shape = BoundaryShape.Read(
-                boundary,
+                outline,
                 Math.Max(modelTolerance, RhinoMath.ZeroTolerance));
             panel.Complexity.CornerCount = shape.CornerCount;
             panel.Complexity.IsRectangular = shape.IsRectangular;
         }
         catch (Exception ex)
         {
-            string reason = $"DLT.Boundary corner analysis threw {Describe(ex)}.";
+            string reason = $"DLT.NetAreaGeometry plan-face corner analysis {Describe(ex)}.";
             AddInvalid(
                 panel,
                 issues,
@@ -2588,4 +2636,9 @@ internal static class LodBuilder
             Evidence = evidence
         };
     }
+}
+
+/// <summary>Signals a field was deliberately skipped because its reason is already recorded.</summary>
+internal sealed class SkipFieldException : Exception
+{
 }
