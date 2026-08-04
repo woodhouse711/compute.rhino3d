@@ -816,7 +816,7 @@ internal static class Extractor
                 issues,
                 $"DLT.Material threw {Describe(ex)}.",
                 invalid: true);
-            SetSubpanelDensity(panel, volumeRaw);
+            SetSubpanelDensity(panel, issues, volumeRaw);
             return;
         }
 
@@ -827,7 +827,7 @@ internal static class Extractor
                 issues,
                 "DLT.Material returned null.",
                 invalid: false);
-            SetSubpanelDensity(panel, volumeRaw);
+            SetSubpanelDensity(panel, issues, volumeRaw);
             return;
         }
 
@@ -843,7 +843,7 @@ internal static class Extractor
                 issues,
                 $"BranchMaterial.Name threw {Describe(ex)}.",
                 invalid: true);
-            SetSubpanelDensity(panel, volumeRaw);
+            SetSubpanelDensity(panel, issues, volumeRaw);
             return;
         }
 
@@ -892,7 +892,7 @@ internal static class Extractor
                 "density_assigned_kg_per_m3",
                 "BranchMaterial.Density == 0 on an unassigned material.");
 
-            SetSubpanelDensity(panel, volumeRaw);
+            SetSubpanelDensity(panel, issues, volumeRaw);
             if (panel.WeightKg.HasValue)
             {
                 // With no material on the subpanels their weight is zero, so GetWeight()
@@ -1016,7 +1016,7 @@ internal static class Extractor
 
         // Density is checked against the SUBPANEL scope, because that is the only scope where
         // volume and weight describe the same material. See SetSubpanelDensity.
-        SetSubpanelDensity(panel, volumeRaw);
+        SetSubpanelDensity(panel, issues, volumeRaw);
     }
 
     private static void SetUnavailableMaterial(
@@ -1068,14 +1068,42 @@ internal static class Extractor
     /// </summary>
     private static void SetSubpanelDensity(
         PanelRecord panel,
+        IssueTracker issues,
         double? subpanelVolumeRaw)
     {
+        // A zero subpanel weight means the subpanels carry no material, so the quotient is
+        // 0 - and 0 is not a density, it is an absence. Emitting it as a number would claim
+        // massless timber. Null with a recorded reason instead: this is the same failure
+        // class as a silently substituted default, just arrived at by division.
+        if (panel.WeightSubpanelsKg.HasValue
+            && panel.WeightSubpanelsKg.Value <= 0.0)
+        {
+            panel.DensitySubpanelsKgPerM3 = null;
+            AddPartial(
+                panel,
+                issues,
+                "density_subpanels_kg_per_m3",
+                "Subpanel weight is zero because the subpanels carry no material, so no "
+                + "density can be derived. This is not a density of zero.");
+            return;
+        }
+
         panel.DensitySubpanelsKgPerM3 =
             panel.WeightSubpanelsKg.HasValue
             && subpanelVolumeRaw.HasValue
             && subpanelVolumeRaw.Value > 0.0
                 ? Round(panel.WeightSubpanelsKg.Value / subpanelVolumeRaw.Value, 1)
                 : null;
+
+        if (!panel.DensitySubpanelsKgPerM3.HasValue
+            && !panel.FieldErrors.ContainsKey("density_subpanels_kg_per_m3"))
+        {
+            AddPartial(
+                panel,
+                issues,
+                "density_subpanels_kg_per_m3",
+                "weight_subpanels_kg or volume_m3 is unavailable.");
+        }
     }
 
     private static void ExtractLamination(
