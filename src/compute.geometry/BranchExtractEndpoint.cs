@@ -1196,7 +1196,10 @@ namespace compute.geometry
                 "weight_kg", "volume_m3", "gross_area_sqft", "net_area_sqft",
                 "net_area_sqft_native", "rough_area_sqft", "species", "grade",
                 "material_name", "material_id", "density_assigned_kg_per_m3",
-                "density_implied_kg_per_m3", "density_discrepancy", "length_mm",
+                "density_subpanels_kg_per_m3", "density_sheathing_kg_per_m3",
+                "weight_subpanels_kg", "weight_sheathing_kg",
+                "volume_sheathing_m3", "volume_total_m3",
+                "sheathing_present", "sheathing_material_name", "length_mm",
                 "width_mm", "depth_mm", "lam", "logistics", "counts",
                 "complexity", "subpanels", "field_errors");
 
@@ -1211,7 +1214,7 @@ namespace compute.geometry
             foreach (string name in new[]
             {
                 "instance_mark", "block_id", "species", "grade",
-                "material_name", "material_id"
+                "material_name", "material_id", "sheathing_material_name"
             })
             {
                 OptionalStringOrNull(panel, name, path);
@@ -1219,14 +1222,16 @@ namespace compute.geometry
             OptionalBoolean(panel, "in_block", path);
             OptionalBooleanOrNull(
                 panel,
-                "density_discrepancy",
+                "sheathing_present",
                 path);
 
             foreach (string name in new[]
             {
                 "weight_kg", "volume_m3", "gross_area_sqft", "net_area_sqft",
                 "net_area_sqft_native", "rough_area_sqft",
-                "density_assigned_kg_per_m3", "density_implied_kg_per_m3",
+                "density_assigned_kg_per_m3", "density_subpanels_kg_per_m3",
+                "density_sheathing_kg_per_m3", "weight_subpanels_kg",
+                "weight_sheathing_kg", "volume_sheathing_m3", "volume_total_m3",
                 "length_mm", "width_mm", "depth_mm"
             })
             {
