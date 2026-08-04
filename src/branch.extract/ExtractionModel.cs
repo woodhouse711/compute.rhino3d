@@ -97,8 +97,17 @@ internal sealed class Panel
     public string MaterialId { get; set; }
 
     public double? DensityAssignedKgPerM3 { get; set; }
-    public double? DensityImpliedKgPerM3 { get; set; }
-    public bool? DensityDiscrepancy { get; set; }
+
+    // GetWeight() is a COMPOSITE: the sum of subpanel weights plus sheathing. DLT.Volume
+    // covers the subpanels only, so weight/volume mixes scopes and is not a density of
+    // anything. Confirmed by the plugin author and measured: on a reference model the
+    // subpanel-scope density lands on exactly 450.0 kg/m3 (the assigned SPF value) while
+    // the panel-scope figure reads 519.1, the difference being 13.3% sheathing.
+    public double? DensitySubpanelsKgPerM3 { get; set; }
+    public double? WeightSubpanelsKg { get; set; }
+    public double? WeightSheathingKg { get; set; }
+    public string SheathingMaterialName { get; set; }
+    public bool? SheathingPresent { get; set; }
 
     public double? LengthMm { get; set; }
     public double? WidthMm { get; set; }

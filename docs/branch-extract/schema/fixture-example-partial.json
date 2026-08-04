@@ -97,8 +97,6 @@
       "material_name": null,
       "material_id": null,
       "density_assigned_kg_per_m3": null,
-      "density_implied_kg_per_m3": 40.1,
-      "density_discrepancy": true,
       "length_mm": 3193.22,
       "width_mm": 888,
       "depth_mm": 180,
@@ -147,8 +145,14 @@
         "material_name": "BranchMaterial.Name == 'Unassigned' \u2014 sentinel, not a material.",
         "material_id": "BranchMaterial.Name == 'Unassigned' \u2014 no assigned material identifier.",
         "density_assigned_kg_per_m3": "BranchMaterial.Density == 0 on an unassigned material.",
-        "weight_kg": "Value returned by GetWeight() but not traceable to the panel's unassigned material. Implied density is 40.1 kg/m3."
-      }
+        "weight_kg": "Value returned by GetWeight() but not traceable to the panel's unassigned material. Implied density is 40.1 kg/m3.",
+        "density_subpanels_kg_per_m3": "subpanels carry no material, so subpanel weight is zero"
+      },
+      "weight_subpanels_kg": 0.0,
+      "weight_sheathing_kg": 20.49,
+      "density_subpanels_kg_per_m3": null,
+      "sheathing_present": true,
+      "sheathing_material_name": null
     }
   ],
   "elements": [

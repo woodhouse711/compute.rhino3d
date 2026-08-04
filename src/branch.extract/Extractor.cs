@@ -503,6 +503,71 @@ internal static class Extractor
         panel.RawWeightKg = weightRaw;
         panel.WeightKg = Round(weightRaw, 2);
 
+        // Decompose the composite. Per the plugin author, DLT.GetWeight() is the sum of
+        // subpanel weights plus sheathing, and cutouts are already deducted. Reporting only
+        // the total made the number unexplainable: a reference model's 214,607.79 kg looked
+        // 15% adrift from a 186,045 kg volume-x-density figure until the 28,563 kg of
+        // sheathing was named. Splitting it here means nobody has to rediscover that.
+        double subpanelWeightRaw = 0.0;
+        bool subpanelWeightComplete = true;
+        try
+        {
+            DLTSubpanel[] subpanels = dlt.GetSubpanels();
+            if (subpanels == null || subpanels.Length == 0)
+            {
+                subpanelWeightComplete = false;
+            }
+            else
+            {
+                foreach (DLTSubpanel subpanel in subpanels)
+                {
+                    double w = subpanel.GetWeight();
+                    if (double.IsFinite(w))
+                        subpanelWeightRaw += w;
+                    else
+                        subpanelWeightComplete = false;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            subpanelWeightComplete = false;
+            AddPartial(
+                panel,
+                issues,
+                "weight_subpanels_kg",
+                $"DLTSubpanel.GetWeight() {Describe(ex)}.");
+        }
+
+        if (subpanelWeightComplete)
+        {
+            panel.WeightSubpanelsKg = Round(subpanelWeightRaw, 2);
+            if (weightRaw.HasValue)
+                panel.WeightSheathingKg = Round(weightRaw.Value - subpanelWeightRaw, 2);
+        }
+
+        try
+        {
+            DLTSheathing top = dlt.SheathingTop;
+            DLTSheathing bottom = dlt.SheathingBottom;
+            panel.SheathingPresent = top != null || bottom != null;
+            BranchMaterial sheathingMaterial = (top ?? bottom)?.Material;
+            string sheathingName = sheathingMaterial?.Name;
+            panel.SheathingMaterialName =
+                string.IsNullOrWhiteSpace(sheathingName)
+                || sheathingName == BranchMaterial.UNASSIGNEDMATERIALNAME
+                    ? null
+                    : sheathingName;
+        }
+        catch (Exception ex)
+        {
+            AddPartial(
+                panel,
+                issues,
+                "sheathing_present",
+                $"DLT.SheathingTop/SheathingBottom {Describe(ex)}.");
+        }
+
         double? volumeRaw = ReadFinite(
             panel,
             issues,
@@ -751,7 +816,7 @@ internal static class Extractor
                 issues,
                 $"DLT.Material threw {Describe(ex)}.",
                 invalid: true);
-            SetImpliedDensity(panel, weightRaw, volumeRaw);
+            SetSubpanelDensity(panel, volumeRaw);
             return;
         }
 
@@ -762,7 +827,7 @@ internal static class Extractor
                 issues,
                 "DLT.Material returned null.",
                 invalid: false);
-            SetImpliedDensity(panel, weightRaw, volumeRaw);
+            SetSubpanelDensity(panel, volumeRaw);
             return;
         }
 
@@ -778,7 +843,7 @@ internal static class Extractor
                 issues,
                 $"BranchMaterial.Name threw {Describe(ex)}.",
                 invalid: true);
-            SetImpliedDensity(panel, weightRaw, volumeRaw);
+            SetSubpanelDensity(panel, volumeRaw);
             return;
         }
 
@@ -827,21 +892,25 @@ internal static class Extractor
                 "density_assigned_kg_per_m3",
                 "BranchMaterial.Density == 0 on an unassigned material.");
 
-            SetImpliedDensity(panel, weightRaw, volumeRaw);
-            panel.DensityDiscrepancy = panel.DensityImpliedKgPerM3.HasValue
-                ? true
-                : null;
+            SetSubpanelDensity(panel, volumeRaw);
             if (panel.WeightKg.HasValue)
             {
-                string implied = panel.DensityImpliedKgPerM3?.ToString(
-                        "0.0",
+                // With no material on the subpanels their weight is zero, so GetWeight()
+                // returns sheathing weight alone. Measured on a reference model: every gram
+                // of a 4,963 kg total was sheathing. The number is real but it is NOT the
+                // panel's structural weight, and saying so precisely matters more than
+                // flagging a vague discrepancy.
+                string sheathing = panel.WeightSheathingKg?.ToString(
+                        "0.00",
                         CultureInfo.InvariantCulture)
                     ?? "unavailable";
                 AddPartial(
                     panel,
                     issues,
                     "weight_kg",
-                    $"Value returned by GetWeight() but not traceable to the panel's unassigned material. Implied density is {implied} kg/m3.");
+                    "GetWeight() returned a value but the subpanels carry no material, so their "
+                    + $"weight is zero and this total is sheathing only ({sheathing} kg). It is not "
+                    + "the panel's structural weight.");
             }
             return;
         }
@@ -945,14 +1014,9 @@ internal static class Extractor
             allowZero: false);
         panel.DensityAssignedKgPerM3 = Round(assignedDensity, 1);
 
-        SetImpliedDensity(panel, weightRaw, volumeRaw);
-        panel.DensityDiscrepancy =
-            panel.DensityAssignedKgPerM3.HasValue
-            && panel.DensityImpliedKgPerM3.HasValue
-                ? Math.Abs(
-                    panel.DensityAssignedKgPerM3.Value
-                    - panel.DensityImpliedKgPerM3.Value) > 1.0
-                : null;
+        // Density is checked against the SUBPANEL scope, because that is the only scope where
+        // volume and weight describe the same material. See SetSubpanelDensity.
+        SetSubpanelDensity(panel, volumeRaw);
     }
 
     private static void SetUnavailableMaterial(
@@ -966,7 +1030,7 @@ internal static class Extractor
         panel.MaterialName = null;
         panel.MaterialId = null;
         panel.DensityAssignedKgPerM3 = null;
-        panel.DensityDiscrepancy = null;
+        panel.DensitySubpanelsKgPerM3 = null;
 
         foreach (string field in new[]
                  {
@@ -992,16 +1056,25 @@ internal static class Extractor
         }
     }
 
-    private static void SetImpliedDensity(
+    /// <summary>
+    /// Density on the SUBPANEL scope: subpanel weight over subpanel volume. This is the only
+    /// scope where numerator and denominator describe the same material, so it is the only
+    /// density we can honestly report. The panel-scope alternative - GetWeight() over
+    /// DLT.Volume - mixes a sheathing-inclusive weight with a subpanel-only volume and
+    /// produced a figure that looked like a Branch defect but was our own arithmetic.
+    ///
+    /// Note the plugin author's caveat: a non-uniform panel (an acoustic build-up, say)
+    /// legitimately has no single density, so a null here is not necessarily an error.
+    /// </summary>
+    private static void SetSubpanelDensity(
         PanelRecord panel,
-        double? weightRaw,
-        double? volumeRaw)
+        double? subpanelVolumeRaw)
     {
-        panel.DensityImpliedKgPerM3 =
-            weightRaw.HasValue
-            && volumeRaw.HasValue
-            && volumeRaw.Value > 0.0
-                ? Round(weightRaw.Value / volumeRaw.Value, 1)
+        panel.DensitySubpanelsKgPerM3 =
+            panel.WeightSubpanelsKg.HasValue
+            && subpanelVolumeRaw.HasValue
+            && subpanelVolumeRaw.Value > 0.0
+                ? Round(panel.WeightSubpanelsKg.Value / subpanelVolumeRaw.Value, 1)
                 : null;
     }
 

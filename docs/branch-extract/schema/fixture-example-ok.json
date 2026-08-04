@@ -71,8 +71,6 @@
       "material_name": "DLTLumber-SPF-No.2 or btr.",
       "material_id": "11111111-1111-1111-1111-111111111111",
       "density_assigned_kg_per_m3": 450.0,
-      "density_implied_kg_per_m3": 519.1,
-      "density_discrepancy": true,
       "length_mm": 11430.0,
       "width_mm": 1219.0,
       "depth_mm": 241.0,
@@ -120,7 +118,12 @@
           "volume_m3": 1.741
         }
       ],
-      "field_errors": {}
+      "field_errors": {},
+      "weight_subpanels_kg": 1566.9,
+      "weight_sheathing_kg": 240.56,
+      "density_subpanels_kg_per_m3": 450.0,
+      "sheathing_present": true,
+      "sheathing_material_name": null
     }
   ],
   "elements": [

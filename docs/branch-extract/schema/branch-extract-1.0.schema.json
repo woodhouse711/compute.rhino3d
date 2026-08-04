@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://structurecraft.com/schema/branch-extract-1.0.schema.json",
   "title": "Branch DLT extraction record, schema 1.0",
-  "description": "One record per model per extraction. Every value states its origin. A null is only valid alongside a reason in field_errors. Nothing in this document is reconstructed arithmetically from another Branch value except where a property name says so explicitly (density_implied_kg_per_m3, penetration_area_sqft).",
+  "description": "One record per model per extraction. Every value states its origin. A null is only valid alongside a reason in field_errors. Nothing in this document is reconstructed arithmetically from another Branch value except where a property name says so explicitly (density_subpanels_kg_per_m3, weight_sheathing_kg, penetration_area_sqft).",
   "type": "object",
   "required": ["schema_version", "generated_at", "snapshot_date", "job", "source", "extraction", "units"],
   "additionalProperties": false,
@@ -154,8 +154,13 @@
         "material_id":   { "type": ["string", "null"], "description": "BranchMaterial.UniqueId" },
 
         "density_assigned_kg_per_m3": { "type": ["number", "null"], "description": "BranchMaterial.Density — what the panel's material says." },
-        "density_implied_kg_per_m3":  { "type": ["number", "null"], "description": "weight_kg / volume_m3 — what GetWeight() behaves as if it used. DERIVED, and labelled as such." },
-        "density_discrepancy":        { "type": ["boolean", "null"], "description": "True when assigned and implied disagree beyond rounding. Branch-internal inconsistency observed on real models: one assigns SPF 450 but implies 519.1 kg/m3; another assigns 0 yet still returns a non-zero weight. Flagged, never reconciled." },
+
+        "weight_subpanels_kg":       { "type": ["number", "null"], "description": "Sum of DLTSubpanel.GetWeight(). The structural timber weight." },
+        "weight_sheathing_kg":       { "type": ["number", "null"], "description": "weight_kg minus weight_subpanels_kg. DLT.GetWeight() is a COMPOSITE - subpanels plus sheathing, with cutouts already deducted - so reporting only the total makes it unexplainable. On a reference model 28,563 kg of a 214,608 kg total was sheathing, 13.3%, which is exactly the gap that made the native figure look 15% adrift from a volume x density calculation. It was never adrift." },
+        "sheathing_present":         { "type": ["boolean", "null"], "description": "DLT.SheathingTop or SheathingBottom is set. Observed on every panel of a reference model, top only." },
+        "sheathing_material_name":   { "type": ["string", "null"], "description": "Material on the sheathing, which is assigned independently of the subpanels. A panel can have unassigned subpanels and sheathing that still carries a material - in which case GetWeight() returns sheathing weight alone." },
+
+        "density_subpanels_kg_per_m3": { "type": ["number", "null"], "description": "weight_subpanels_kg / volume_m3. The ONLY honest density here, because it is the one scope where numerator and denominator describe the same material - DLT.Volume covers the subpanels only. On a reference model this lands on exactly 450.0, the assigned SPF density, which is what validates the material read. Do NOT divide weight_kg by volume_m3: that mixes a sheathing-inclusive weight with a subpanel-only volume and yields a figure that looks like a defect but is an arithmetic error. Null is legitimate for a non-uniform build-up such as an acoustic panel, which has no single density." },
 
         "length_mm": { "type": ["number", "null"] },
         "width_mm":  { "type": ["number", "null"] },
