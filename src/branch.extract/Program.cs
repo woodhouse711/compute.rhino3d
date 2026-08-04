@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -379,7 +380,9 @@ internal static class RuntimeHost
             if (!Rhino.PlugIns.PlugIn.LoadPlugIn(pluginId))
                 throw new PluginLoadException("Branch plugin failed to load.");
 
-            string lastDocumentWarning = SetPluginLastDocumentFileName(options.ModelPath);
+            List<string> bootstrapWarnings = new();
+            Add(bootstrapWarnings, SuppressBlockingDialogs());
+            Add(bootstrapWarnings, SetPluginLastDocumentFileName(options.ModelPath));
             Console.WriteLine($"Opening: {Path.GetFileName(options.ModelPath)}");
 
             Rhino.RhinoDoc document = Rhino.RhinoDoc.OpenHeadless(options.ModelPath);
@@ -391,7 +394,7 @@ internal static class RuntimeHost
                 document,
                 options,
                 coordinator,
-                lastDocumentWarning);
+                bootstrapWarnings);
         }
         finally
         {
@@ -403,6 +406,71 @@ internal static class RuntimeHost
             {
                 // Process exit is the Branch document teardown boundary.
             }
+        }
+    }
+
+    private static void Add(List<string> warnings, string warning)
+    {
+        if (!string.IsNullOrWhiteSpace(warning))
+            warnings.Add(warning);
+    }
+
+    // Opening a model saved by an older Branch build makes the plugin upgrade its
+    // object model in memory. br.desktop.Utilities.BranchDataIntegrityEnforcer
+    // guards that with a modal WPF consent dialog (UpgradeVersionWindow, owned by
+    // RhinoApp.MainWindowHandle), which in a NoWindow core is an unanswerable
+    // prompt: the run hangs until the timeout kills it.
+    //
+    // The enforcer already knows how to proceed without asking. Every one of its
+    // gates - ResolveMismatchedDataVersions, CheckVersionCompatibility,
+    // EnsureExternalResourcesExist, HandleMissingInternalData - is written as
+    //
+    //     if (BranchApp.IsInTestMode || CommandUtils.WasCalledHeadlessly) ...
+    //
+    // logging "Bypassing Upgrade UI as Command was either headless or ran in
+    // TestMode". We cannot satisfy the second disjunct: WasCalledHeadlessly does
+    // not detect a headless host at all, it scans RhinoApp.CommandHistoryWindowText
+    // backwards for a "Command:-" entry, i.e. Rhino's dash-prefix scripting
+    // convention. This process runs no Rhino command, so that history is empty.
+    // So we set the first disjunct, which is a plain settable static property.
+    //
+    // This changes no extracted value. Outside the enforcer, IsInTestMode is read
+    // only by the logging handler (log file location), Events.BeginSave, and the
+    // sheet/drawing and list-export subsystems - none of which this process
+    // touches, and it has no save path at all.
+    //
+    // The upgrade is purely in memory: BR3DLoadHandler.TryUpgradeDictionaryOfType
+    // converts each archived dictionary as it is read. Nothing is written back, so
+    // the model on disk keeps its original version and stays openable by whichever
+    // Branch build its author uses.
+    private static string SuppressBlockingDialogs()
+    {
+        try
+        {
+            Assembly assembly = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(candidate =>
+                    candidate.GetName().Name == "br.om");
+            Type type = assembly?.GetType("sc.om.BranchApp");
+            PropertyInfo property = type?.GetProperty(
+                "IsInTestMode",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+
+            if (property == null || !property.CanWrite)
+            {
+                return "Could not set BranchApp.IsInTestMode; an out-of-date model "
+                    + "will stop on Branch's upgrade dialog and time out.";
+            }
+
+            property.SetValue(null, true);
+            Console.WriteLine("Upgrade and integrity dialogs suppressed (in-memory upgrade only; model is never written).");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Exception actual = ex is TargetInvocationException invocation
+                ? invocation.InnerException ?? ex
+                : ex;
+            return $"BranchApp.IsInTestMode setter failed: {actual.Message}";
         }
     }
 

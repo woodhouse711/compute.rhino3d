@@ -51,7 +51,7 @@ internal static class Extractor
         RhinoDoc rhinoDocument,
         CommandLineOptions options,
         RunCoordinator coordinator,
-        string lastDocumentWarning)
+        IReadOnlyList<string> bootstrapWarnings)
     {
         ExtractionDocument output = ExtractionDocumentFactory.CreateBase(
             options,
@@ -59,8 +59,11 @@ internal static class Extractor
         output.Source.RhinoVersion = RhinoApp.Version.ToString();
 
         IssueTracker issues = new();
-        if (!string.IsNullOrWhiteSpace(lastDocumentWarning))
-            issues.Invalid("bootstrap", lastDocumentWarning);
+        foreach (string warning in bootstrapWarnings ?? Array.Empty<string>())
+        {
+            if (!string.IsNullOrWhiteSpace(warning))
+                issues.Invalid("bootstrap", warning);
+        }
 
         // RhinoDoc.OpenHeadless establishes this process-global singleton.
         // Capture it before Branch's event sequence, matching the proven
