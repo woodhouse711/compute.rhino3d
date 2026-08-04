@@ -123,7 +123,10 @@
       "weight_sheathing_kg": 240.56,
       "density_subpanels_kg_per_m3": 450.0,
       "sheathing_present": true,
-      "sheathing_material_name": null
+      "sheathing_material_name": null,
+      "volume_sheathing_m3": 0.418,
+      "volume_total_m3": 3.9,
+      "density_sheathing_kg_per_m3": 575.5
     }
   ],
   "elements": [

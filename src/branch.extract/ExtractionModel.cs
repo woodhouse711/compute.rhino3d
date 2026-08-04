@@ -106,6 +106,9 @@ internal sealed class Panel
     public double? DensitySubpanelsKgPerM3 { get; set; }
     public double? WeightSubpanelsKg { get; set; }
     public double? WeightSheathingKg { get; set; }
+    public double? VolumeSheathingM3 { get; set; }
+    public double? VolumeTotalM3 { get; set; }
+    public double? DensitySheathingKgPerM3 { get; set; }
     public string SheathingMaterialName { get; set; }
     public bool? SheathingPresent { get; set; }
 

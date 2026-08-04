@@ -546,26 +546,83 @@ internal static class Extractor
                 panel.WeightSheathingKg = Round(weightRaw.Value - subpanelWeightRaw, 2);
         }
 
+        // Read the sheathing DIRECTLY rather than deriving its weight as (total - subpanels).
+        // DLTSheathing is IVolumetric and IWeighable, so it has its own Volume, GetWeight()
+        // and Material. Reading both halves independently turns the composition into
+        // something verifiable: subpanels + sheathing should RECONCILE with GetWeight()
+        // instead of being assumed to.
+        double sheathingWeightRaw = 0.0, sheathingVolumeRaw = 0.0;
+        bool sheathingComplete = true, anySheathing = false;
         try
         {
-            DLTSheathing top = dlt.SheathingTop;
-            DLTSheathing bottom = dlt.SheathingBottom;
-            panel.SheathingPresent = top != null || bottom != null;
-            BranchMaterial sheathingMaterial = (top ?? bottom)?.Material;
-            string sheathingName = sheathingMaterial?.Name;
-            panel.SheathingMaterialName =
-                string.IsNullOrWhiteSpace(sheathingName)
-                || sheathingName == BranchMaterial.UNASSIGNEDMATERIALNAME
-                    ? null
-                    : sheathingName;
+            foreach (DLTSheathing sheathing in new[] { dlt.SheathingTop, dlt.SheathingBottom })
+            {
+                if (sheathing == null)
+                    continue;
+                anySheathing = true;
+
+                double w = sheathing.GetWeight();
+                if (double.IsFinite(w)) sheathingWeightRaw += w; else sheathingComplete = false;
+
+                double v = sheathing.Volume;
+                if (double.IsFinite(v)) sheathingVolumeRaw += v; else sheathingComplete = false;
+
+                if (panel.SheathingMaterialName == null)
+                {
+                    string name = sheathing.Material?.Name;
+                    panel.SheathingMaterialName =
+                        string.IsNullOrWhiteSpace(name)
+                        || name == BranchMaterial.UNASSIGNEDMATERIALNAME
+                            ? null
+                            : name;
+                }
+            }
+            panel.SheathingPresent = anySheathing;
         }
         catch (Exception ex)
         {
+            sheathingComplete = false;
             AddPartial(
                 panel,
                 issues,
                 "sheathing_present",
                 $"DLT.SheathingTop/SheathingBottom {Describe(ex)}.");
+        }
+
+        if (anySheathing && sheathingComplete)
+        {
+            panel.WeightSheathingKg = Round(sheathingWeightRaw, 2);
+            panel.VolumeSheathingM3 = Round(sheathingVolumeRaw * units.VolumeToM3, 3);
+            panel.DensitySheathingKgPerM3 =
+                sheathingVolumeRaw > 0.0
+                    ? Round(sheathingWeightRaw / (sheathingVolumeRaw * units.VolumeToM3), 1)
+                    : null;
+        }
+        else if (!anySheathing)
+        {
+            panel.WeightSheathingKg = 0.0;
+            panel.VolumeSheathingM3 = 0.0;
+        }
+
+        // Reconciliation: the parts should add up to the whole. This is the only independent
+        // check we have on GetWeight(), which otherwise has to be taken on trust.
+        if (weightRaw.HasValue
+            && panel.WeightSubpanelsKg.HasValue
+            && panel.WeightSheathingKg.HasValue)
+        {
+            double parts = panel.WeightSubpanelsKg.Value + panel.WeightSheathingKg.Value;
+            if (Math.Abs(parts - weightRaw.Value) > 0.5)
+            {
+                AddPartial(
+                    panel,
+                    issues,
+                    "weight_kg",
+                    $"Parts do not reconcile with the whole: subpanels "
+                    + $"{panel.WeightSubpanelsKg.Value.ToString("0.00", CultureInfo.InvariantCulture)} + sheathing "
+                    + $"{panel.WeightSheathingKg.Value.ToString("0.00", CultureInfo.InvariantCulture)} = "
+                    + $"{parts.ToString("0.00", CultureInfo.InvariantCulture)} against GetWeight() "
+                    + $"{weightRaw.Value.ToString("0.00", CultureInfo.InvariantCulture)} kg.");
+            }
         }
 
         double? volumeRaw = ReadFinite(
@@ -577,6 +634,21 @@ internal static class Extractor
             allowZero: false);
         panel.RawVolumeM3 = volumeRaw;
         panel.VolumeM3 = Round(volumeRaw, 3);
+
+        // Total material actually present. A total VOLUME is a real physical quantity, so it
+        // is reported. A total DENSITY deliberately is NOT: averaging timber against plywood
+        // describes no material anyone would act on.
+        if (volumeRaw.HasValue && panel.VolumeSheathingM3.HasValue)
+        {
+            // volumeRaw is ALREADY in m3 - ReadFinite applied units.VolumeToM3 when it read
+            // DLT.Volume. Scaling again here silently reduced the subpanel term to ~0 and made
+            // the total equal the sheathing alone (43.94 where 457.37 was correct). Only the
+            // sheathing figure, read straight off DLTSheathing.Volume, needs converting.
+            panel.VolumeTotalM3 = Round(
+                volumeRaw.Value + panel.VolumeSheathingM3.Value,
+                3);
+        }
+
 
         double? grossAreaRaw = ReadFinite(
             panel,
