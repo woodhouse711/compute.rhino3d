@@ -175,10 +175,12 @@
           "properties": {
             "profile":       { "type": ["string", "null"] },
             "arrangement":   { "type": ["string", "null"] },
-            "thickness_mm":  { "type": ["number", "null"] },
+            "thickness_mm":  { "type": ["number", "null"], "description": "DEPRECATED: this field contains DLTParameters.LamWidth in mm, not a thickness. Retained for backwards compatibility only. New consumers must use width_mm instead." },
+            "width_mm":      { "type": ["number", "null"], "description": "DLTParameters.LamWidth in mm, rounded to 2 decimals. The molder-critical dimension." },
             "height_mm":     { "type": ["number", "null"] },
             "notation":      { "type": ["string", "null"], "description": "e.g. 18/14+18/15" },
-            "count":         { "type": ["integer", "null"], "description": "DLT.GetLamsCount()" }
+            "count":         { "type": ["integer", "null"], "description": "DLT.GetLamsCount()" },
+            "stack_count":   { "type": ["integer", "null"], "description": "Total lam stacks across all subpanels of the panel." }
           }
         },
 
@@ -228,7 +230,8 @@
             "daps_through":          { "type": ["integer", "null"], "description": "Non-sheathing daps on this panel whose Depth reaches or exceeds DLT.DepthOfSubpanel, i.e. cutters that sever the laminate. Equality counts as through. Null with a reason if DepthOfSubpanel is unavailable." },
             "daps_surface":          { "type": ["integer", "null"], "description": "Non-sheathing daps shallower than DLT.DepthOfSubpanel: recesses that remove no net area, which is exactly why penetration_area_sqft reports 0 on a heavily machined panel." },
             "daps_sheathing":        { "type": ["integer", "null"], "description": "Daps with IsSheathingDap set - they cut the sheathing layer, not the laminate, and are counted separately because they are a different operation." },
-            "dap_tool_setups":       { "type": ["integer", "null"], "description": "Distinct (Depth, Width, CornerRadius) combinations among non-sheathing daps: how many tool configurations the panel needs, where ten identical daps count once and ten different ones count ten. Deliberately a count of configurations rather than of magnitudes, because every dap MAGNITUDE is a cutting tool's magnitude and not the cut's - on one reference job 554 of 671 daps were longer than the longest panel in the model, and summing Dap2d.NetArea 'removed' 1.39x the panel area in existence." },
+            "operation_classes":     { "type": ["array", "null"], "items": { "type": "string", "enum": ["drill", "countersunk_drill", "rectangular_pocket", "shaped_pocket", "planar_cut", "sheathing_cut", "sharp_internal_corner"] }, "uniqueItems": true, "description": "Sorted distinct geometric operation classes on the panel. Reflects the variety of cutting operations required during CNC fabrication." },
+            "cut_variants":          { "type": ["integer", "null"], "description": "Distinct (Depth, Width, CornerRadius) combinations among non-sheathing daps: how many tool configurations the panel needs, where ten identical daps count once and ten different ones count ten. Deliberately a count of configurations rather than of magnitudes, because every dap MAGNITUDE is a cutting tool's magnitude and not the cut's - on one reference job 554 of 671 daps were longer than the longest panel in the model, and summing Dap2d.NetArea 'removed' 1.39x the panel area in existence." },
             "max_dap_depth_mm":      { "type": ["number", "null"], "description": "Deepest dap on this panel, in mm. A value above the laminate thickness simply means a cutter passes through; it is not an error." }
           }
         },
@@ -239,9 +242,13 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "type_letter":   { "type": ["string", "null"] },
-              "net_area_sqft": { "type": ["number", "null"] },
-              "volume_m3":     { "type": ["number", "null"] }
+              "type_letter":      { "type": ["string", "null"] },
+              "net_area_sqft":    { "type": ["number", "null"] },
+              "volume_m3":        { "type": ["number", "null"] },
+              "width_mm":         { "type": ["number", "null"], "description": "DLTSubpanel.Width in mm, 1 decimal. The CNC has a hard 1300 mm width limit that applies to the subpanel and not the panel — panels are routinely wider and are split precisely to fit — so without a real per-subpanel width the single hardest manufacturing constraint cannot be checked. On one measured 249-panel job, 477 subpanels ran up to 1298 mm against that 1300 mm limit, i.e. 2 mm of clearance." },
+              "length_mm":        { "type": ["number", "null"], "description": "DLTSubpanel.Length in mm, 1 decimal." },
+              "lam_stacks":       { "type": ["array", "null"], "items": { "type": "integer" }, "description": "Lam count per lam stack, in stack index order." },
+              "stack_widths_mm":  { "type": ["array", "null"], "items": { "type": "number" }, "description": "Width in mm per lam stack, same order as lam_stacks." }
             }
           }
         },

@@ -134,10 +134,13 @@ internal sealed class LamRecord
 {
     public string Profile { get; set; }
     public string Arrangement { get; set; }
+    // Holds DLTParameters.LamWidth (a WIDTH, not a thickness). Retained only for backwards compatibility; WidthMm is the correctly named field.
     public double? ThicknessMm { get; set; }
+    public double? WidthMm { get; set; }
     public double? HeightMm { get; set; }
     public string Notation { get; set; }
     public int? Count { get; set; }
+    public int? StackCount { get; set; }
 }
 
 internal sealed class LogisticsRecord
@@ -182,7 +185,8 @@ internal sealed class ComplexityDescriptors
     public int? DapsThrough { get; set; }
     public int? DapsSurface { get; set; }
     public int? DapsSheathing { get; set; }
-    public int? DapToolSetups { get; set; }
+    public List<string> OperationClasses { get; set; }
+    public int? CutVariants { get; set; }
     public double? MaxDapDepthMm { get; set; }
 }
 
@@ -191,6 +195,14 @@ internal sealed class SubpanelRecord
     public string TypeLetter { get; set; }
     public double? NetAreaSqft { get; set; }
     public double? VolumeM3 { get; set; }
+
+    // CNC has a hard 1300 mm width limit that applies to the SUBPANEL, not panel. Panels
+    // routinely split to fit. Per-subpanel width is the hardest manufacturing constraint;
+    // until now inferred downstream only as (lam count x lam width).
+    public double? WidthMm { get; set; }
+    public double? LengthMm { get; set; }
+    public List<int> LamStacks { get; set; }
+    public List<double> StackWidthsMm { get; set; }
 }
 
 internal sealed class Element

@@ -1245,14 +1245,16 @@ namespace compute.geometry
                 RequireAllowedProperties(
                     lam,
                     lamPath,
-                    "profile", "arrangement", "thickness_mm", "height_mm",
-                    "notation", "count");
+                    "profile", "arrangement", "thickness_mm", "width_mm", "height_mm",
+                    "notation", "count", "stack_count");
                 OptionalStringOrNull(lam, "profile", lamPath);
                 OptionalStringOrNull(lam, "arrangement", lamPath);
                 OptionalStringOrNull(lam, "notation", lamPath);
                 OptionalNumberOrNull(lam, "thickness_mm", lamPath);
+                OptionalNumberOrNull(lam, "width_mm", lamPath);
                 OptionalNumberOrNull(lam, "height_mm", lamPath);
                 OptionalIntegerOrNull(lam, "count", lamPath);
+                OptionalIntegerOrNull(lam, "stack_count", lamPath);
             }
 
             JObject logistics =
@@ -1315,7 +1317,7 @@ namespace compute.geometry
                     "is_rectangular", "has_penetrations",
                     "blank_volume_m3", "machined_volume_m3", "machined_pct",
                     "daps_through", "daps_surface", "daps_sheathing",
-                    "dap_tool_setups", "max_dap_depth_mm");
+                    "operation_classes", "cut_variants", "max_dap_depth_mm");
                 OptionalNumberOrNull(
                     complexity,
                     "penetration_area_sqft",
@@ -1354,11 +1356,12 @@ namespace compute.geometry
                 }
                 foreach (string counter in new[]
                     {
-                        "daps_through", "daps_surface", "daps_sheathing", "dap_tool_setups"
+                        "daps_through", "daps_surface", "daps_sheathing", "cut_variants"
                     })
                 {
                     OptionalIntegerOrNull(complexity, counter, complexityPath);
                 }
+                OptionalStringArray(complexity, "operation_classes", complexityPath);
             }
 
             if (panel.TryGetValue("subpanels", out JToken subpanelsToken))
@@ -1380,7 +1383,8 @@ namespace compute.geometry
                     RequireAllowedProperties(
                         subpanel,
                         subpanelPath,
-                        "type_letter", "net_area_sqft", "volume_m3");
+                        "type_letter", "net_area_sqft", "volume_m3", "width_mm", "length_mm",
+                        "lam_stacks", "stack_widths_mm");
                     OptionalStringOrNull(
                         subpanel,
                         "type_letter",
@@ -1392,6 +1396,22 @@ namespace compute.geometry
                     OptionalNumberOrNull(
                         subpanel,
                         "volume_m3",
+                        subpanelPath);
+                    OptionalNumberOrNull(
+                        subpanel,
+                        "width_mm",
+                        subpanelPath);
+                    OptionalNumberOrNull(
+                        subpanel,
+                        "length_mm",
+                        subpanelPath);
+                    ValidateOptionalIntegerArray(
+                        subpanel,
+                        "lam_stacks",
+                        subpanelPath);
+                    ValidateOptionalNumberArray(
+                        subpanel,
+                        "stack_widths_mm",
                         subpanelPath);
                 }
             }
@@ -1692,6 +1712,91 @@ namespace compute.geometry
                     ThrowContract(
                         $"{path}.{name}[{index}] must be a string.");
                 }
+            }
+        }
+
+        static void OptionalStringArray(
+            JObject value,
+            string name,
+            string path)
+        {
+            if (!value.TryGetValue(name, out JToken token) ||
+                token.Type == JTokenType.Null)
+            {
+                return;
+            }
+            JArray array = token as JArray;
+            if (array == null)
+                ThrowContract($"{path}.{name} must be an array or null.");
+
+            var allowedValues = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "drill", "countersunk_drill", "rectangular_pocket", "shaped_pocket",
+                "planar_cut", "sheathing_cut", "sharp_internal_corner"
+            };
+
+            for (int index = 0; index < array.Count; index++)
+            {
+                if (array[index].Type != JTokenType.String)
+                {
+                    ThrowContract(
+                        $"{path}.{name}[{index}] must be a string.");
+                }
+                string value_str = array[index].Value<string>();
+                if (!allowedValues.Contains(value_str))
+                {
+                    ThrowContract(
+                        $"{path}.{name}[{index}] must be one of: drill, countersunk_drill, " +
+                        "rectangular_pocket, shaped_pocket, planar_cut, sheathing_cut, sharp_internal_corner.");
+                }
+            }
+        }
+
+        static void ValidateOptionalIntegerArray(
+            JObject value,
+            string name,
+            string path)
+        {
+            if (!value.TryGetValue(name, out JToken token) ||
+                token.Type == JTokenType.Null)
+            {
+                return;
+            }
+            JArray array = token as JArray;
+            if (array == null)
+                ThrowContract($"{path}.{name} must be an array or null.");
+            for (int index = 0; index < array.Count; index++)
+            {
+                if (array[index].Type != JTokenType.Integer)
+                {
+                    ThrowContract(
+                        $"{path}.{name}[{index}] must be an integer.");
+                }
+            }
+        }
+
+        static void ValidateOptionalNumberArray(
+            JObject value,
+            string name,
+            string path)
+        {
+            if (!value.TryGetValue(name, out JToken token) ||
+                token.Type == JTokenType.Null)
+            {
+                return;
+            }
+            JArray array = token as JArray;
+            if (array == null)
+                ThrowContract($"{path}.{name} must be an array or null.");
+            for (int index = 0; index < array.Count; index++)
+            {
+                if (array[index].Type != JTokenType.Integer &&
+                    array[index].Type != JTokenType.Float)
+                {
+                    ThrowContract(
+                        $"{path}.{name}[{index}] must be a number.");
+                }
+                ValidateFiniteNumber(array[index], $"{path}.{name}[{index}]");
             }
         }
 

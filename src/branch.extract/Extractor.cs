@@ -780,6 +780,11 @@ internal static class Extractor
                 issues,
                 "net_area_sqft",
                 $"DLT.GetSubpanels() threw {Describe(ex)}.");
+            AddInvalid(
+                panel,
+                issues,
+                "lam.stack_count",
+                $"DLT.GetSubpanels() threw {Describe(ex)}.");
             return null;
         }
 
@@ -790,11 +795,18 @@ internal static class Extractor
                 issues,
                 "net_area_sqft",
                 "DLT.GetSubpanels() returned no subpanels; raw subpanel NetArea cannot be summed.");
+            AddInvalid(
+                panel,
+                issues,
+                "lam.stack_count",
+                "DLT.GetSubpanels() returned no subpanels; LamStack entries cannot be summed.");
             return null;
         }
 
         bool everyAreaValid = true;
         double rawAreaSum = 0.0;
+        bool everyStackCollectionValid = true;
+        int stackCount = 0;
         for (int index = 0; index < subpanels.Length; index++)
         {
             DLTSubpanel subpanel = subpanels[index];
@@ -808,6 +820,7 @@ internal static class Extractor
                     $"subpanels[{index}]",
                     "DLT.GetSubpanels() contained a null entry.");
                 everyAreaValid = false;
+                everyStackCollectionValid = false;
                 continue;
             }
 
@@ -830,6 +843,151 @@ internal static class Extractor
                     issues,
                     $"subpanels[{index}].type_letter",
                     $"DLTSubpanel.TypeLetter threw {Describe(ex)}.");
+            }
+
+            record.WidthMm = Round(ReadFinite(
+                panel,
+                issues,
+                "subpanels.width_mm",
+                () => subpanel.Width,
+                units.LengthToMillimetres,
+                allowZero: false), 1);
+            record.LengthMm = Round(ReadFinite(
+                panel,
+                issues,
+                "subpanels.length_mm",
+                () => subpanel.Length,
+                units.LengthToMillimetres,
+                allowZero: false), 1);
+
+            LamStack[] lamStacks = null;
+            try
+            {
+                lamStacks = subpanel.LamStacks;
+            }
+            catch (Exception ex)
+            {
+                everyStackCollectionValid = false;
+                AddInvalid(
+                    panel,
+                    issues,
+                    "subpanels.lam_stacks",
+                    $"DLTSubpanel {index} LamStacks threw {Describe(ex)}.");
+            }
+
+            if (lamStacks == null || lamStacks.Length == 0)
+            {
+                if (lamStacks == null)
+                    everyStackCollectionValid = false;
+                if (!panel.FieldErrors.ContainsKey("subpanels.lam_stacks"))
+                {
+                    AddInvalid(
+                        panel,
+                        issues,
+                        "subpanels.lam_stacks",
+                        $"DLTSubpanel {index} LamStacks was null or empty.");
+                }
+            }
+            else
+            {
+                try
+                {
+                    stackCount = checked(stackCount + lamStacks.Length);
+                }
+                catch (OverflowException ex)
+                {
+                    everyStackCollectionValid = false;
+                    AddInvalid(
+                        panel,
+                        issues,
+                        "lam.stack_count",
+                        $"Summing DLTSubpanel.LamStacks lengths threw {Describe(ex)}.");
+                }
+
+                List<(LamStack Stack, int Index, int Position)> indexedStacks =
+                    new(lamStacks.Length);
+                bool everyStackIndexValid = true;
+                for (int stackPosition = 0; stackPosition < lamStacks.Length; stackPosition++)
+                {
+                    try
+                    {
+                        indexedStacks.Add((
+                            lamStacks[stackPosition],
+                            lamStacks[stackPosition].Index,
+                            stackPosition));
+                    }
+                    catch (Exception ex)
+                    {
+                        everyStackIndexValid = false;
+                        AddInvalid(
+                            panel,
+                            issues,
+                            "subpanels.lam_stacks",
+                            $"DLTSubpanel {index} LamStack {stackPosition} Index threw {Describe(ex)}.");
+                    }
+                }
+
+                if (everyStackIndexValid)
+                {
+                    indexedStacks.Sort((left, right) =>
+                    {
+                        int comparison = left.Index.CompareTo(right.Index);
+                        return comparison != 0
+                            ? comparison
+                            : left.Position.CompareTo(right.Position);
+                    });
+
+                    List<int> lamCounts = new(indexedStacks.Count);
+                    List<double> stackWidths = new(indexedStacks.Count);
+                    bool everyLamCountValid = true;
+                    bool everyStackWidthValid = true;
+                    foreach ((LamStack stack, int _, int position) in indexedStacks)
+                    {
+                        try
+                        {
+                            int count = stack.GetLamsCount();
+                            if (count < 0)
+                            {
+                                everyLamCountValid = false;
+                                AddInvalid(
+                                    panel,
+                                    issues,
+                                    "subpanels.lam_stacks",
+                                    $"DLTSubpanel {index} LamStack {position} GetLamsCount() returned negative value {count}.");
+                            }
+                            else
+                            {
+                                lamCounts.Add(count);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            everyLamCountValid = false;
+                            AddInvalid(
+                                panel,
+                                issues,
+                                "subpanels.lam_stacks",
+                                $"DLTSubpanel {index} LamStack {position} GetLamsCount() threw {Describe(ex)}.");
+                        }
+
+                        double? stackWidth = Round(ReadFinite(
+                            panel,
+                            issues,
+                            "subpanels.stack_widths_mm",
+                            () => stack.Width,
+                            units.LengthToMillimetres,
+                            allowZero: false), 1);
+                        if (stackWidth.HasValue)
+                            stackWidths.Add(stackWidth.Value);
+                        else
+                            everyStackWidthValid = false;
+                    }
+
+                    if (everyLamCountValid)
+                        record.LamStacks = lamCounts;
+                    if (everyStackWidthValid)
+                        record.StackWidthsMm = stackWidths;
+                }
             }
 
             double? area = ReadFinite(
@@ -855,6 +1013,19 @@ internal static class Extractor
                 units.VolumeToM3,
                 allowZero: true);
             record.VolumeM3 = Round(volume, 3);
+        }
+
+        if (everyStackCollectionValid)
+        {
+            panel.Lam.StackCount = stackCount;
+        }
+        else if (!panel.FieldErrors.ContainsKey("lam.stack_count"))
+        {
+            AddInvalid(
+                panel,
+                issues,
+                "lam.stack_count",
+                "At least one DLTSubpanel.LamStacks collection was unreadable, so the total is unavailable.");
         }
 
         if (!everyAreaValid)
@@ -1201,6 +1372,7 @@ internal static class Extractor
                          "lam.profile",
                          "lam.arrangement",
                          "lam.thickness_mm",
+                         "lam.width_mm",
                          "lam.height_mm"
                      })
             {
@@ -1216,6 +1388,7 @@ internal static class Extractor
                          "lam.profile",
                          "lam.arrangement",
                          "lam.thickness_mm",
+                         "lam.width_mm",
                          "lam.height_mm"
                      })
             {
@@ -1278,6 +1451,13 @@ internal static class Extractor
                 panel,
                 issues,
                 "lam.thickness_mm",
+                () => parameters.LamWidth,
+                units.LengthToMillimetres,
+                allowZero: false), 2);
+            panel.Lam.WidthMm = Round(ReadFinite(
+                panel,
+                issues,
+                "lam.width_mm",
                 () => parameters.LamWidth,
                 units.LengthToMillimetres,
                 allowZero: false), 2);
@@ -1484,6 +1664,12 @@ internal static class Extractor
                 issues,
                 "counts.daps_non_fastener",
                 $"DLT.CollectNonFastenerDaps() {Describe(ex)}.");
+            panel.Complexity.OperationClasses = null;
+            AddInvalid(
+                panel,
+                issues,
+                "complexity.operation_classes",
+                $"DLT.CollectNonFastenerDaps() {Describe(ex)}.");
         }
 
         try
@@ -1536,7 +1722,7 @@ internal static class Extractor
     // AreaMassProperties.Compute(Boundary) on 671 of 671 daps - it just measures the tool.
     // So nothing here uses a dap's area, volume, length or width as a quantity of material.
     // Only Depth, Width and CornerRadius are used, and only to classify and to tell one
-    // tool configuration from another. Real removed material comes from
+    // cut geometry from another. Real removed material comes from
     // ExtractMachinedVolume instead.
     private static void ExtractDapCharacter(
         System.Collections.IEnumerable daps,
@@ -1547,12 +1733,27 @@ internal static class Extractor
     {
         try
         {
-            double subpanelDepth = dlt.DepthOfSubpanel;
-            bool haveSubpanelDepth = double.IsFinite(subpanelDepth) && subpanelDepth > 0;
+            double subpanelDepth = double.NaN;
+            bool haveSubpanelDepth = false;
+            try
+            {
+                subpanelDepth = dlt.DepthOfSubpanel;
+                haveSubpanelDepth = double.IsFinite(subpanelDepth) && subpanelDepth > 0;
+            }
+            catch (Exception ex)
+            {
+                AddInvalid(
+                    panel,
+                    issues,
+                    "complexity.daps_through",
+                    $"DLT.DepthOfSubpanel threw {Describe(ex)}.");
+            }
 
             int through = 0, surface = 0, sheathing = 0;
             double maxDepth = double.NegativeInfinity;
-            HashSet<string> setups = new(StringComparer.Ordinal);
+            HashSet<string> cutVariants = new(StringComparer.Ordinal);
+            HashSet<string> operationClasses = new(StringComparer.Ordinal);
+            bool everyOperationClassReadValid = true;
 
             static double? Prop(object target, string name)
             {
@@ -1566,15 +1767,175 @@ internal static class Extractor
                 catch { return null; }
             }
 
+            static double RequiredNumericProp(object target, string name)
+            {
+                PropertyInfo property = target.GetType().GetProperty(name);
+                if (property == null)
+                    throw new MissingMemberException(target.GetType().FullName, name);
+                object value = property.GetValue(target);
+                if (value == null)
+                    throw new InvalidOperationException($"{target.GetType().Name}.{name} returned null");
+                return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            }
+
             foreach (object dap in daps)
             {
+                if (dap == null)
+                {
+                    everyOperationClassReadValid = false;
+                    AddInvalid(
+                        panel,
+                        issues,
+                        "complexity.operation_classes",
+                        "DLT.CollectNonFastenerDaps() contained a null entry.");
+                    continue;
+                }
+
+                string dapTypeName = dap.GetType().Name;
+                bool isDap1d = dapTypeName.Contains(
+                    "Dap1d",
+                    StringComparison.OrdinalIgnoreCase);
+                bool isDap2d = dapTypeName.Contains(
+                    "Dap2d",
+                    StringComparison.OrdinalIgnoreCase);
+                bool isPlanarCut = dapTypeName.Contains(
+                    "PlanarCut",
+                    StringComparison.OrdinalIgnoreCase);
+
                 bool isSheathingDap = false;
                 try
                 {
-                    if (dap.GetType().GetProperty("IsSheathingDap")?.GetValue(dap) is bool flag)
-                        isSheathingDap = flag;
+                    object value = dap.GetType()
+                        .GetProperty("IsSheathingDap")
+                        ?.GetValue(dap);
+                    if (value is not bool flag)
+                        throw new InvalidOperationException(
+                            $"{dapTypeName}.IsSheathingDap did not return a bool");
+                    isSheathingDap = flag;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    everyOperationClassReadValid = false;
+                    AddInvalid(
+                        panel,
+                        issues,
+                        "complexity.operation_classes",
+                        $"{dapTypeName}.IsSheathingDap read {Describe(ex)}.");
+                }
+
+                if (isSheathingDap)
+                    operationClasses.Add("sheathing_cut");
+                if (isPlanarCut)
+                    operationClasses.Add("planar_cut");
+
+                if (isDap1d)
+                {
+                    operationClasses.Add("drill");
+                    double? countersinkDiameter = ReadFinite(
+                        panel,
+                        issues,
+                        "complexity.operation_classes",
+                        () =>
+                        {
+                            object countersink = dap.GetType()
+                                .GetProperty("Countersink")
+                                ?.GetValue(dap);
+                            if (countersink == null)
+                            {
+                                throw new InvalidOperationException(
+                                    $"{dapTypeName}.Countersink returned null");
+                            }
+                            return RequiredNumericProp(countersink, "Diameter");
+                        },
+                        1.0,
+                        allowZero: true);
+                    if (countersinkDiameter.HasValue)
+                    {
+                        if (countersinkDiameter.Value > 0.0)
+                            operationClasses.Add("countersunk_drill");
+                    }
+                    else
+                    {
+                        everyOperationClassReadValid = false;
+                    }
+                }
+
+                if (isDap2d)
+                {
+                    try
+                    {
+                        // Reference wrappers are the reason this is not a plain IsBox() call.
+                        // Dap2DReference implements IDap2DBase and exposes Boundary, Depth,
+                        // CornerRadius, NetArea and Width, but it does NOT declare IsBox() -
+                        // it derives from ConnectionMemberReferenceBase<DapBase>, not from
+                        // Dap2dBase. Calling IsBox() on one throws MissingMethodException,
+                        // which invalidated operation_classes on 159 of 249 panels of one job
+                        // and dropped the whole record from 'ok' to 'partial_invalid'.
+                        //
+                        // Skipping references instead would under-report: they represent real
+                        // pockets cut into this panel. So resolve the wrapper to the dap it
+                        // points at (Component, else ReferencedComponent) and ask that.
+                        object boxSource = dap;
+                        MethodInfo isBoxMethod = dap.GetType().GetMethod(
+                            "IsBox",
+                            Type.EmptyTypes);
+                        if (isBoxMethod == null)
+                        {
+                            foreach (string accessor in new[] { "Component", "ReferencedComponent" })
+                            {
+                                object target = dap.GetType()
+                                    .GetProperty(accessor)
+                                    ?.GetValue(dap);
+                                MethodInfo candidate = target?.GetType()
+                                    .GetMethod("IsBox", Type.EmptyTypes);
+                                if (candidate == null) continue;
+                                boxSource = target;
+                                isBoxMethod = candidate;
+                                break;
+                            }
+                        }
+                        if (isBoxMethod == null)
+                            throw new MissingMethodException(dap.GetType().FullName, "IsBox");
+                        object value = isBoxMethod.Invoke(boxSource, null);
+                        if (value is not bool isBox)
+                            throw new InvalidOperationException(
+                                $"{dapTypeName}.IsBox() did not return a bool");
+                        operationClasses.Add(isBox
+                            ? "rectangular_pocket"
+                            : "shaped_pocket");
+                    }
+                    catch (Exception ex)
+                    {
+                        everyOperationClassReadValid = false;
+                        AddInvalid(
+                            panel,
+                            issues,
+                            "complexity.operation_classes",
+                            $"{dapTypeName}.IsBox() read {Describe(ex)}.");
+                    }
+
+                    // A zero internal corner radius cannot be produced by a rotating round
+                    // tool without a change of strategy, so it predicts special machining
+                    // approaches. It is emitted as observed geometry; naming the shop's actual
+                    // strategy (mill / offset mill / reverse mill) requires a shop-supplied
+                    // mapping we deliberately do not guess at.
+                    double? cornerRadius = ReadFinite(
+                        panel,
+                        issues,
+                        "complexity.operation_classes",
+                        () => RequiredNumericProp(dap, "CornerRadius"),
+                        1.0,
+                        allowZero: true);
+                    if (cornerRadius.HasValue)
+                    {
+                        if (cornerRadius.Value <= RhinoMath.SqrtEpsilon)
+                            operationClasses.Add("sharp_internal_corner");
+                    }
+                    else
+                    {
+                        everyOperationClassReadValid = false;
+                    }
+                }
 
                 double? depth = Prop(dap, "Depth");
                 if (depth.HasValue && depth.Value > maxDepth)
@@ -1594,10 +1955,12 @@ internal static class Extractor
                     else surface++;
                 }
 
-                // A tool configuration, not a size: ten identical daps are one setup, ten
-                // different ones are ten. Immune to the oversizing above because it compares
-                // configurations rather than accumulating magnitudes.
-                setups.Add(string.Join(
+                // The field counts distinct (Depth, Width, CornerRadius) combinations, which
+                // is a count of distinct cut GEOMETRIES, not of tools. It was previously named
+                // for tool setups, which overstated it – a large corner radius can be produced
+                // by a smaller tool driven along an arc, so distinct radii do not imply distinct
+                // tooling. It remains a useful diversity signal under an honest name.
+                cutVariants.Add(string.Join(
                     "|",
                     (depth ?? double.NaN).ToString("F1", CultureInfo.InvariantCulture),
                     (Prop(dap, "Width") ?? double.NaN).ToString("F1", CultureInfo.InvariantCulture),
@@ -1605,7 +1968,12 @@ internal static class Extractor
             }
 
             panel.Complexity.DapsSheathing = sheathing;
-            panel.Complexity.DapToolSetups = setups.Count;
+            panel.Complexity.OperationClasses = everyOperationClassReadValid
+                ? operationClasses
+                    .OrderBy(value => value, StringComparer.Ordinal)
+                    .ToList()
+                : null;
+            panel.Complexity.CutVariants = cutVariants.Count;
 
             if (haveSubpanelDepth)
             {
@@ -1614,12 +1982,15 @@ internal static class Extractor
             }
             else
             {
-                AddInvalid(
-                    panel,
-                    issues,
-                    "complexity.daps_through",
-                    "DLT.DepthOfSubpanel is unavailable, so a dap cannot be classified as "
-                    + "through or surface.");
+                if (!panel.FieldErrors.ContainsKey("complexity.daps_through"))
+                {
+                    AddInvalid(
+                        panel,
+                        issues,
+                        "complexity.daps_through",
+                        "DLT.DepthOfSubpanel is unavailable, so a dap cannot be classified as "
+                        + "through or surface.");
+                }
             }
 
             panel.Complexity.MaxDapDepthMm = double.IsNegativeInfinity(maxDepth)
@@ -1631,8 +2002,14 @@ internal static class Extractor
             AddInvalid(
                 panel,
                 issues,
-                "complexity.dap_tool_setups",
+                "complexity.cut_variants",
                 $"Dap character read {Describe(ex)}.");
+            panel.Complexity.OperationClasses = null;
+            AddInvalid(
+                panel,
+                issues,
+                "complexity.operation_classes",
+                $"Dap collection read {Describe(ex)}.");
         }
     }
 
