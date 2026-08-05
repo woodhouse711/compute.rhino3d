@@ -1312,7 +1312,10 @@ namespace compute.geometry
                     complexityPath,
                     "penetration_area_sqft", "penetration_count",
                     "corner_count", "perimeter_m", "corners_per_m",
-                    "is_rectangular", "has_penetrations");
+                    "is_rectangular", "has_penetrations",
+                    "blank_volume_m3", "machined_volume_m3", "machined_pct",
+                    "daps_through", "daps_surface", "daps_sheathing",
+                    "dap_tool_setups", "max_dap_depth_mm");
                 OptionalNumberOrNull(
                     complexity,
                     "penetration_area_sqft",
@@ -1341,6 +1344,21 @@ namespace compute.geometry
                     complexity,
                     "has_penetrations",
                     complexityPath);
+                foreach (string numeric in new[]
+                    {
+                        "blank_volume_m3", "machined_volume_m3", "machined_pct",
+                        "max_dap_depth_mm"
+                    })
+                {
+                    OptionalNumberOrNull(complexity, numeric, complexityPath);
+                }
+                foreach (string counter in new[]
+                    {
+                        "daps_through", "daps_surface", "daps_sheathing", "dap_tool_setups"
+                    })
+                {
+                    OptionalIntegerOrNull(complexity, counter, complexityPath);
+                }
             }
 
             if (panel.TryGetValue("subpanels", out JToken subpanelsToken))

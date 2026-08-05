@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
@@ -745,6 +745,7 @@ internal static class Extractor
             panel,
             located.Id,
             planarCutsByHost,
+            units,
             issues);
         ExtractComplexity(
             dlt,
@@ -1426,6 +1427,7 @@ internal static class Extractor
         PanelRecord panel,
         Guid panelId,
         IReadOnlyDictionary<Guid, int> planarCutsByHost,
+        UnitConversions units,
         IssueTracker issues)
     {
         HashSet<Guid> fastenerDapIds = new();
@@ -1473,6 +1475,7 @@ internal static class Extractor
             if (daps == null)
                 throw new InvalidOperationException("returned null");
             panel.Counts.DapsNonFastener = daps.Count;
+            ExtractDapCharacter(daps, dlt, panel, units, issues);
         }
         catch (Exception ex)
         {
@@ -1523,6 +1526,199 @@ internal static class Extractor
         return fastenerDapIds;
     }
 
+    // Dap character, from the daps this panel actually receives.
+    //
+    // Every dap MAGNITUDE is the magnitude of a cutting tool, not of the cut. Cutters are
+    // deliberately oversized so they pass clean through: on one reference job 554 of 671
+    // daps were longer than the longest panel in the model, the largest measuring 28.4 m
+    // against a 3.2 m panel, and summing Dap2d.NetArea "removed" 1.39x the panel area that
+    // exists. Dap2d.NetArea is a true measured area - it agrees with
+    // AreaMassProperties.Compute(Boundary) on 671 of 671 daps - it just measures the tool.
+    // So nothing here uses a dap's area, volume, length or width as a quantity of material.
+    // Only Depth, Width and CornerRadius are used, and only to classify and to tell one
+    // tool configuration from another. Real removed material comes from
+    // ExtractMachinedVolume instead.
+    private static void ExtractDapCharacter(
+        System.Collections.IEnumerable daps,
+        DLT dlt,
+        PanelRecord panel,
+        UnitConversions units,
+        IssueTracker issues)
+    {
+        try
+        {
+            double subpanelDepth = dlt.DepthOfSubpanel;
+            bool haveSubpanelDepth = double.IsFinite(subpanelDepth) && subpanelDepth > 0;
+
+            int through = 0, surface = 0, sheathing = 0;
+            double maxDepth = double.NegativeInfinity;
+            HashSet<string> setups = new(StringComparer.Ordinal);
+
+            static double? Prop(object target, string name)
+            {
+                try
+                {
+                    object value = target.GetType().GetProperty(name)?.GetValue(target);
+                    if (value == null) return null;
+                    double converted = Convert.ToDouble(value, CultureInfo.InvariantCulture);
+                    return double.IsFinite(converted) ? converted : null;
+                }
+                catch { return null; }
+            }
+
+            foreach (object dap in daps)
+            {
+                bool isSheathingDap = false;
+                try
+                {
+                    if (dap.GetType().GetProperty("IsSheathingDap")?.GetValue(dap) is bool flag)
+                        isSheathingDap = flag;
+                }
+                catch { }
+
+                double? depth = Prop(dap, "Depth");
+                if (depth.HasValue && depth.Value > maxDepth)
+                    maxDepth = depth.Value;
+
+                if (isSheathingDap)
+                {
+                    sheathing++;
+                    continue;
+                }
+
+                // A cutter deeper than the laminate goes right through it. Equality counts as
+                // through - a 180 mm cutter in a 180 mm panel severs it.
+                if (depth.HasValue && haveSubpanelDepth)
+                {
+                    if (depth.Value >= subpanelDepth - RhinoMath.SqrtEpsilon) through++;
+                    else surface++;
+                }
+
+                // A tool configuration, not a size: ten identical daps are one setup, ten
+                // different ones are ten. Immune to the oversizing above because it compares
+                // configurations rather than accumulating magnitudes.
+                setups.Add(string.Join(
+                    "|",
+                    (depth ?? double.NaN).ToString("F1", CultureInfo.InvariantCulture),
+                    (Prop(dap, "Width") ?? double.NaN).ToString("F1", CultureInfo.InvariantCulture),
+                    (Prop(dap, "CornerRadius") ?? double.NaN).ToString("F1", CultureInfo.InvariantCulture)));
+            }
+
+            panel.Complexity.DapsSheathing = sheathing;
+            panel.Complexity.DapToolSetups = setups.Count;
+
+            if (haveSubpanelDepth)
+            {
+                panel.Complexity.DapsThrough = through;
+                panel.Complexity.DapsSurface = surface;
+            }
+            else
+            {
+                AddInvalid(
+                    panel,
+                    issues,
+                    "complexity.daps_through",
+                    "DLT.DepthOfSubpanel is unavailable, so a dap cannot be classified as "
+                    + "through or surface.");
+            }
+
+            panel.Complexity.MaxDapDepthMm = double.IsNegativeInfinity(maxDepth)
+                ? null
+                : Round(maxDepth * units.LengthToMillimetres, 1);
+        }
+        catch (Exception ex)
+        {
+            AddInvalid(
+                panel,
+                issues,
+                "complexity.dap_tool_setups",
+                $"Dap character read {Describe(ex)}.");
+        }
+    }
+
+    // Material machined out of the blank.
+    //
+    // This is the measure penetration_area_sqft cannot give. That one is gross minus net
+    // PLAN area, so it only sees material missing from the outline; a panel machined all
+    // over its faces still reports 0.00, which on one reference job was every one of 105
+    // panels while a fifth of the blank had in fact been cut away.
+    //
+    // NetAreaGeometry is the panel's blank as a closed solid - a plain one has exactly 6
+    // faces - and FinalGeometry is the same panel after every cut is applied. The
+    // difference is removed material, needing two volume reads and NO boolean operation.
+    // Verified on 105 panels: never negative, and FinalGeometry's volume equals DLT.Volume
+    // on 104 of them.
+    private static void ExtractMachinedVolume(
+        DLT dlt,
+        PanelRecord panel,
+        UnitConversions units,
+        IssueTracker issues)
+    {
+        double? blankRaw = ReadSolidVolume(dlt, panel, issues, "complexity.blank_volume_m3",
+            () => dlt.NetAreaGeometry, "DLT.NetAreaGeometry");
+        double? finalRaw = ReadSolidVolume(dlt, panel, issues, "complexity.machined_volume_m3",
+            () => dlt.FinalGeometry, "DLT.FinalGeometry");
+
+        if (!blankRaw.HasValue || !finalRaw.HasValue)
+            return;
+
+        double blank = blankRaw.Value * units.VolumeToM3;
+        double machined = (blankRaw.Value - finalRaw.Value) * units.VolumeToM3;
+
+        panel.Complexity.BlankVolumeM3 = Round(blank, 3);
+
+        // A negative result means the two solids are not the blank/cut pair assumed here -
+        // report it rather than publish an impossible quantity.
+        if (machined < -RhinoMath.SqrtEpsilon)
+        {
+            AddInvalid(
+                panel,
+                issues,
+                "complexity.machined_volume_m3",
+                "DLT.FinalGeometry encloses more volume than DLT.NetAreaGeometry, so their "
+                + $"difference is not removed material (got {FormatRaw(machined)} m3).");
+            return;
+        }
+
+        if (machined < 0) machined = 0;
+        panel.Complexity.MachinedVolumeM3 = Round(machined, 4);
+        panel.Complexity.MachinedPct = blank > 0
+            ? Round(machined / blank * 100.0, 1)
+            : null;
+    }
+
+    private static double? ReadSolidVolume(
+        DLT dlt,
+        PanelRecord panel,
+        IssueTracker issues,
+        string field,
+        Func<Brep> get,
+        string source)
+    {
+        try
+        {
+            Brep solid = get();
+            if (solid == null)
+                throw new InvalidOperationException("returned null");
+            if (!solid.IsSolid)
+                throw new InvalidOperationException("returned a solid that is not closed");
+
+            VolumeMassProperties properties = VolumeMassProperties.Compute(solid);
+            if (properties == null)
+                throw new InvalidOperationException("VolumeMassProperties.Compute returned null");
+            if (!double.IsFinite(properties.Volume) || properties.Volume <= 0)
+                throw new InvalidOperationException(
+                    $"enclosed a non-positive volume ({FormatRaw(properties.Volume)})");
+
+            return properties.Volume;
+        }
+        catch (Exception ex)
+        {
+            AddInvalid(panel, issues, field, $"{source} {Describe(ex)}.");
+            return null;
+        }
+    }
+
     private static void ExtractComplexity(
         DLT dlt,
         PanelRecord panel,
@@ -1532,6 +1728,8 @@ internal static class Extractor
         double? netAreaRaw,
         IssueTracker issues)
     {
+        ExtractMachinedVolume(dlt, panel, units, issues);
+
         panel.Complexity.PenetrationAreaSqft =
             grossAreaRaw.HasValue && netAreaRaw.HasValue
                 ? Round(

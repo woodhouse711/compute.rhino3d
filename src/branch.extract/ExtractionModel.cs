@@ -168,6 +168,22 @@ internal sealed class ComplexityDescriptors
     public double? CornersPerM { get; set; }
     public bool? IsRectangular { get; set; }
     public bool? HasPenetrations { get; set; }
+
+    // Machining removed from the blank. PenetrationAreaSqft only sees material missing
+    // from the PLAN outline, so a panel machined all over its faces still reports 0 - on
+    // one reference job that was every one of 105 panels. These measure the solid instead.
+    public double? MachinedVolumeM3 { get; set; }
+    public double? MachinedPct { get; set; }
+    public double? BlankVolumeM3 { get; set; }
+
+    // Dap character. Counts of collection events on THIS panel, which is the honest
+    // per-panel figure; a single dap can be shared by many panels, so these must never be
+    // summed across a job to count physical daps.
+    public int? DapsThrough { get; set; }
+    public int? DapsSurface { get; set; }
+    public int? DapsSheathing { get; set; }
+    public int? DapToolSetups { get; set; }
+    public double? MaxDapDepthMm { get; set; }
 }
 
 internal sealed class SubpanelRecord
